@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from functools import partial
 from typing import Mapping, Callable, Union, Any, Sequence, Iterable
 
-import app
+from clapy import app
 
 
 class Missing(object):
