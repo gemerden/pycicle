@@ -3,7 +3,7 @@ import unittest
 from itertools import product
 
 from clapy import ArgParser, Argument
-from tools import Choice, File, Folder
+from basetypes import File, Folder, Choice
 
 
 def yielder(arg):

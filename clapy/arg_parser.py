@@ -7,21 +7,9 @@ from functools import partial
 from typing import Mapping, Callable, Union, Any, Sequence, Iterable
 
 from clapy import arg_app
-from tools import get_stdout, parse_bool, encode_bool, Codec, encode_datetime, parse_datetime, encode_timedelta, \
-    parse_timedelta, encode_date, parse_date, encode_time, parse_time, File
-
-
-class Missing(object):
-    def __bool__(self):
-        return False
-
-    def __str__(self):
-        return "MISSING"
-
-    __repr__ = __str__
-
-
-MISSING = Missing()
+from tools import get_stdout, Codec, MISSING
+from parsers import parse_bool, encode_bool, encode_datetime, parse_datetime, encode_date, parse_date, encode_time, parse_time, \
+    parse_timedelta, encode_timedelta
 
 
 @dataclass
