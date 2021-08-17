@@ -1,19 +1,23 @@
 import json
-import os
 import sys
 from argparse import ArgumentParser, Action, Namespace
 from dataclasses import dataclass
+from datetime import datetime, timedelta, date, time
 from functools import partial
 from typing import Mapping, Callable, Union, Any, Sequence, Iterable
 
-from clapy import app
+from clapy import arg_app
+from tools import get_stdout, parse_bool, encode_bool, Codec, encode_datetime, parse_datetime, encode_timedelta, \
+    parse_timedelta, encode_date, parse_date, encode_time, parse_time, File
 
 
 class Missing(object):
     def __bool__(self):
         return False
+
     def __str__(self):
         return "MISSING"
+
     __repr__ = __str__
 
 
@@ -35,7 +39,20 @@ class Argument(object):
 
     NO_VALS = (None, "", MISSING)
 
+    type_codecs = {
+        bool: Codec(encode_bool, parse_bool),
+        datetime: Codec(encode_datetime, parse_datetime),
+        timedelta: Codec(encode_timedelta, parse_timedelta),
+        date: Codec(encode_date, parse_date),
+        time: Codec(encode_time, parse_time),
+    }
+
+    template = "{name} {args}: \t\t\t{type}, many={many}, default={default}, required={required}, constant={constant}"
+
     def __post_init__(self):
+        encode, decode = self.type_codecs.get(self.type, (None, None))
+        self.encode = encode or str
+        self.decode = decode or self.type
         if self.default not in (None, MISSING):
             if isinstance(self.type, type):
                 if not isinstance(self.default, self.type):
@@ -50,16 +67,16 @@ class Argument(object):
         if obj is None:
             return self
         try:
-            return obj.namespace[self.name]
+            return obj._namespace[self.name]
         except KeyError:
             if self.default is not MISSING:
                 return self.default
             raise AttributeError(f"missing argument '{self.name}'")
 
     def __set__(self, obj, value):
-        if self.constant and self.name in obj.namespace:
+        if self.constant and self.name in obj._namespace:
             return
-        obj.namespace[self.name] = self.validate(value)
+        obj._namespace[self.name] = self.validate(value)
 
     def validate(self, value):
         if value in self.NO_VALS:
@@ -70,9 +87,10 @@ class Argument(object):
                 if len(value) != self.many:
                     raise ValueError(f"argument '{self.name}' is not of correct length {self.many}")
             if self.many is not False:
-                value = [self.type(v) for v in value]
-            else:
-                value = self.type(value)
+                if all(isinstance(v, str) for v in value):
+                    value = [self.decode(v) for v in value]
+            elif isinstance(value, str):
+                value = self.decode(value)
             if self.valid and not self.valid(value):
                 raise ValueError(f"invalid argument for '{self.name}'")
         return value
@@ -86,23 +104,23 @@ class Argument(object):
             return '-' + self.name[0], '--' + self.name
         return self.name,
 
-    def parse_key(self, short=False):
+    def cmd_key(self, short=False):
         """ return string e.g. '--version', '-v'"""
-        if self.positional:
+        if len(self.args) == 0:
             return ''
         if len(self.args) == 1:
             return self.args[0]
         return self.args[0] if short else self.args[1]
 
-    def parse_value(self, obj):
+    def cmd_value(self, obj):
         value = self.__get__(obj)
         if self.many:
-            return ' '.join(str(v) for v in value)
-        return str(value)
+            return ' '.join(self.encode(v) for v in value)
+        return self.encode(value)
 
     def add_to_parser(self, parser, _seen):
-        self.args = self._get_name_or_flag(_seen)
-        kwargs = dict(type=self.type,
+        args = self._get_name_or_flag(_seen)
+        kwargs = dict(type=self.decode,
                       nargs=None,
                       help=self.help)
         if self.many is True:
@@ -125,7 +143,17 @@ class Argument(object):
         if self.callback:
             kwargs.update(action=partial(CallbackAction,
                                          callback=self.callback))
-        parser.add_argument(*self.args, **kwargs)
+        self.args = () if self.positional else args
+        parser.add_argument(*args, **kwargs)
+
+    def __str__(self):
+        def get_name(arg):
+            try:
+                return arg.__name__
+            except AttributeError:
+                return str(arg)
+
+        return self.template.format(**{n: get_name(v) for n, v in self.__dict__.items()})
 
 
 class CallbackAction(Action):
@@ -139,103 +167,157 @@ class CallbackAction(Action):
 
 
 class ArgParser(Mapping):
-    parser_class = ArgumentParser
-    arg_names = None  # set in __init_subclass__
+    _parser_class = ArgumentParser
+    _arg_parser = None  # set in __init_subclass__
+    _arguments = None  # set in __init_subclass__
 
-    @classmethod
-    def __arguments__(cls) -> Iterable:
-        for c in cls.__mro__:
-            for name, arg in vars(c).items():
-                if isinstance(arg, Argument):
-                    yield arg
-
-    @classmethod
-    @property
-    def string(cls):
-        line_end = '\n\t'
-        return f"{cls.__name__}({','.join(c.__name__ for c in cls.__bases__)}):" \
-               f"{line_end}{line_end.join(map(str, cls.__arguments__()))}"
-
-    @classmethod
-    def defaults(cls):
-        return {a.name: a.default for a in cls.__arguments__() if a.default is not MISSING}
+    _template = \
+        """
+        {title}
+        _________________________________________________________________________________
+        {original}
+        
+        Definitions:
+        _________________________________________________________________________________
+        {definitions}
+        
+        
+        Command Line:
+        _________________________________________________________________________________
+        
+        {parser_help}
+        """
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
-        cls.parser = cls.parser_class(**kwargs)
-        seen_arg_names = set()
-        for arg in cls.__arguments__():
-            arg.add_to_parser(cls.parser, _seen=seen_arg_names)
-            seen_arg_names.add(arg.name)
-        cls.arg_names = seen_arg_names
+        cls._arg_parser = cls._parser_class(**kwargs)
+        cls._arguments = cls._get_arguments()
+        seen = set()
+        for name, arg in cls._arguments.items():
+            arg.add_to_parser(cls._arg_parser, seen)
+            seen.add(name)
+        cls._extend_doc()
 
     @classmethod
-    def load(cls, filename: str, mode: str = 'r'):
+    def _get_arguments(cls):
+        arguments = {}
+        for c in reversed(cls.__mro__):
+            for name, arg in vars(c).items():
+                if isinstance(arg, Argument):
+                    arguments[arg.name] = arg
+        return arguments
+
+    @classmethod
+    def _get_def_string(cls):
+        line_end = '\n\t'
+        return f"{line_end}{line_end.join(map(str, cls._arguments.values()))}"
+
+    @classmethod
+    def _defaults(cls):
+        return {name: arg.default for name, arg in cls._arguments.items() if arg.default is not MISSING}
+
+    @classmethod
+    def _parser_help(cls):
+        with get_stdout() as cmd_help:
+            cls._arg_parser.print_help()
+        lines = [l.strip() for l in cmd_help().split('\n')]
+        return '\n\t'.join(lines)
+
+    @classmethod
+    def _extend_doc(cls):
+        cls.__doc__ = cls._template.format(title=cls.__name__,
+                                           original=cls.__doc__,
+                                           definitions=cls._get_def_string(),
+                                           parser_help=cls._parser_help())
+
+    @classmethod
+    def _load(cls, filename: str, mode: str = 'r'):
         with open(filename, mode) as f:
             return cls(json.load(f))
-
-    @classmethod
-    def app(cls, target):
-        parser = cls(args={}, target=target, _execute=False)
-        app.App(parser=parser).mainloop()
 
     def __init__(self,
                  args: Union[str, Sequence, Mapping, None] = None,
                  target: Callable = None,
-                 _execute: bool = True):
-        self.target = target
-        self.namespace = {}
-        if isinstance(args, dict):
-            self.update(**args)
+                 use_app: bool = True):
+        self._namespace = {}
+        self._target = target
+        if isinstance(args, Mapping):
+            if self._fill(**args):
+                self._call()
+        elif use_app and self._no_arguments(args):
+            self._run_app()
         else:
-            if isinstance(args, str):
-                args = [a.strip() for a in args.split()]
-            try:
-                parsed = self.parser.parse_args(args)
-            except SystemExit as e:  # intercept when e.g. called with --help
-                if e.code not in (None, 0):
-                    raise
-            else:
-                self.update(**parsed.__dict__)
-        if _execute and self.target:
-            self.call()
+            if self._parse(args):
+                self._call()
 
-    def update(self, **kwargs):
-        new_kwargs = self.defaults()
-        new_kwargs.update(self.namespace)
+    def _runnable(self):
+        return self._is_valid() and self._target
+
+    def _no_arguments(self, args):
+        return not args and len(sys.argv) == 1
+
+    def _run_app(self):
+        arg_app.App(parser=self).mainloop()
+
+    def _is_valid(self):
+        for name, arg in self._arguments.items():
+            if arg.required and name not in self:
+                return False
+        return True
+
+    def _parse(self, args):
+        if isinstance(args, str):
+            args = [a.strip() for a in args.split()]
+        try:
+            parsed = self._arg_parser.parse_args(args)
+        except SystemExit as e:  # intercept when e.g. called with --help
+            if e.code not in (None, 0):
+                raise
+            return False
+        else:
+            return self._fill(**parsed.__dict__)
+
+    def _fill(self, **kwargs):
+        new_kwargs = self._defaults()
+        new_kwargs.update(self._namespace)
         new_kwargs.update(kwargs)
+        self._namespace.clear()
         for name, value in new_kwargs.items():
-            if name not in self.arg_names:
+            if name not in self._arguments:
                 raise AttributeError(f"'{name}' is not a configurable argument")
             setattr(self, name, value)
+        return self._runnable()
 
     def __len__(self) -> int:
-        return len(self.namespace)
+        return len(self._namespace)
 
     def __iter__(self) -> Iterable:
-        yield from self.namespace
+        yield from self._namespace
 
     def __getitem__(self, key: str):
-        return self.namespace[key]
+        return self._namespace[key]
 
-    def save(self, filename: str, mode: str = 'w'):
+    def _save(self, filename: str, mode: str = 'w'):
         with open(filename, mode) as f:
             f.write(repr(self))
 
-    def call(self, target: Callable = None) -> Any:
-        target = target or self.target
-        return target(**self.namespace)
+    def _call(self, target: Callable = None) -> Any:
+        target = target or self._target
+        return target(**self)
 
-    def command(self, short=False):
-        filename = os.path.basename(sys.argv[0])
-        key_values = [f"{arg.parse_key(short)} {arg.parse_value(self)}" for arg in self.__arguments__()]
-        return filename + ' '.join(key_values)
+    def _command(self, short=False):
+        items = []
+        for arg in self._arguments.values():
+            cmd_key, cmd_value = arg.cmd_key(short), arg.cmd_value(self)
+            if cmd_value:
+                items.append(f"{cmd_key} {cmd_value}")
+        return ' '.join(items).strip()
 
     def __str__(self) -> str:
-        return json.dumps(self.namespace, indent=4)
+        return json.dumps(self._namespace, indent=4)
 
     def __repr__(self) -> str:
-        return json.dumps(self.namespace, indent=4)
+        return json.dumps(self._namespace, indent=4)
 
 
 if __name__ == '__main__':
@@ -244,14 +326,15 @@ if __name__ == '__main__':
 
 
     class Parser(ArgParser):
+        """ this is a test ArgParser """
         a = Argument(int, positional=True, default=3)
         b = Argument(int, valid=lambda v: v < 10)
         c = Argument(int, default=11, constant=True)
         dd = Argument(int, many=3, callback=lambda a, b: print(a, b))
 
 
-    print(Parser.string)
+    print(Parser._get_string())
     print('starting')
     parser = Parser('-b 4 -d 1 2 3')
-    parser.call(target)
+    parser._call(target)
     print('done')

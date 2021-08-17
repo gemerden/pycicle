@@ -116,5 +116,5 @@ dmypy.json
 #pycharm
 .idea/
 
-#app
+#run_app
 temp/
