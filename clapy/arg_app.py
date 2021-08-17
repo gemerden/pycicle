@@ -24,8 +24,8 @@ class TkArgWrapper(object):
     }
 
     def __init__(self, app, argument):
-        self.argument = argument
         self.app = app
+        self.argument = argument
         self.var = None
         self.factory = {bool: self._get_boolean_value_widget,
                         FileBase: self._get_file_value_widget,
@@ -35,16 +35,19 @@ class TkArgWrapper(object):
 
     def get_value(self):
         try:
-            value = getattr(self.app.parser, self.argument.name)
+            value = getattr(self.app.parser,
+                            self.argument.name)
         except AttributeError:
-            value = self.argument.default or self.argument.type()
-        if self.argument.type not in self.factory:
+            value = self.argument.default or None
+        if self.argument.type is bool:  # special case, hard to do otherwise
+            value = bool(value)
+        elif self.argument.type not in self.factory:
             value = self.argument.encode(value)
         return value
 
     def sync_value(self, event=None):
+        value = self.var.get()
         try:
-            value = self.var.get()
             if self.argument.many is not False:
                 value = [v.strip() for v in value.strip(',').split(',') if v.strip()]
             setattr(self.app.parser, self.argument.name, value)
@@ -59,13 +62,33 @@ class TkArgWrapper(object):
                 self.widget.config(highlightthickness=0)
             return True
 
+    def reset_value(self):
+        delattr(self.app.parser,
+                self.argument.name)
+        self.var.set(self.get_value())
+
     def create_widget(self, master, name, **kwargs):
         if name == 'value':
             if self.argument.constant:
                 kwargs['state'] = tk.DISABLED
             self.widget = self._get_value_widget(master, **kwargs)
             return self.widget
+        if name == 'help':
+            return self._get_help_widget(master, **kwargs)
         return tk.Label(master, text=self._get_string(name), **kwargs)
+
+    def _get_help_widget(self, master, **kwargs):
+        if not self.argument.help:
+            return tk.Label(master)
+
+        def show():
+            w, h = (320, 120)
+            x = button.winfo_rootx() + button.winfo_width() + 5
+            y = button.winfo_rooty() - h - 30
+            show_text_dialog(self.app.master, title='help', text=self.argument.help, wh=(w, h), xy=(x, y))
+
+        button = tk.Button(master, text='?', width=3, command=show, **kwargs)
+        return button
 
     def _get_widget_getter(self):
         for cls, widget_getter in self.factory.items():
@@ -125,6 +148,9 @@ class TkArgWrapper(object):
         return self._get_file_folder_value_widget(master, command=self._open_folder_dialog, **kwargs)
 
     def _get_choice_value_widget(self, master, **kwargs):
+        if self.argument.many is not False:
+            return self._get_string_value_widget(master, **kwargs)
+
         def on_select(event):
             self.var.set(widget.get())
             self.app.synchronize()
@@ -134,9 +160,9 @@ class TkArgWrapper(object):
         self.var = tk.StringVar(value=self.get_value())
         values = [] if self.argument.required else ['']
         values.extend(map(str, self.argument.type.choices))
-        widget = ttk.Combobox(master, values=values, **kwargs)
+        widget = ttk.Combobox(master, values=values)
+        widget.config(textvariable=self.var, **kwargs)
         widget.bind("<<ComboboxSelected>>", on_select)
-        widget.current(values.index(self.var.get()))
         return widget
 
 
@@ -174,9 +200,9 @@ class FormFrame(BaseFrame):
     def _init(self):
         self.wrappers = [TkArgWrapper(app=self.master,
                                       argument=arg)
-                         for arg in self.master.arguments.values()]
+                         for arg in self.master.arguments]
         self.command_string_var = tk.StringVar()
-        self.short = False
+        self.short = True  # switched before first use
 
     def _get_grid_kwargs(self, col_name):
         grid_kwargs = self.grid_kwargs.copy()
@@ -234,6 +260,7 @@ class ButtonBar(BaseFrame):
         save=None,
         save_as=None,
         load=None,
+        reset=None,
         help={'text': '?', 'width': 3}
     )
 
@@ -321,16 +348,23 @@ class App(BaseFrame):
             self.form = FormFrame(self)
             self.form.grid(row=0, column=0)
 
+    def reset(self):
+        for wrapper in self.form.wrappers:
+            wrapper.reset_value()
+
     def help(self):
         help_text = type(self.parser).__doc__ or ""
-        show_text_dialog(self.master, 'help', help_text)
+        x = self.winfo_rootx() + self.winfo_width() + 20
+        y = self.winfo_rooty() - 36
+        show_text_dialog(self.master, 'help', help_text, wh=(640, 640), xy=(x, y))
 
 
-def show_text_dialog(win, title, text, size='640x640'):
+def show_text_dialog(win, title, text, wh, xy):
     dialog = tk.Toplevel(win)
     dialog.title(title)
-    dialog.geometry(size)
+    dialog.geometry(f"{wh[0]}x{wh[1]}+{xy[0]}+{xy[1]}")
     dialog.config(bg="white")
     widget = tk.Text(dialog, bg="white", font=('Helvetica', 10, 'normal'))
     widget.pack(expand=True, fill=tk.BOTH)
     widget.insert(tk.END, text)
+    widget.config(state=tk.DISABLED)

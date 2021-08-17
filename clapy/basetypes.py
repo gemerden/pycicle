@@ -69,3 +69,13 @@ def Choice(*choices):
     if any(type(c) != type(choices[0]) for c in choices):
         raise ValueError(f"all choices must be of same class")
     return type('Choice', (ChoiceBase, type(choices[0])), {'choices': choices})
+
+
+if __name__ == '__main__':
+    file = File('.txt')
+    f = file('sample.txt')
+    print(isinstance(f, file))
+
+    choice = Choice('a', 'b', 'c')
+    c = choice('d')
+    print(isinstance(c, choice))

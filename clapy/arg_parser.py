@@ -7,7 +7,7 @@ from functools import partial
 from typing import Mapping, Callable, Union, Any, Sequence, Iterable
 
 from clapy import arg_app
-from tools import get_stdout, Codec, MISSING
+from tools import get_stdout, Codec, MISSING, from_none, into_none
 from parsers import parse_bool, encode_bool, encode_datetime, parse_datetime, encode_date, parse_date, encode_time, parse_time, \
     parse_timedelta, encode_timedelta
 
@@ -25,8 +25,6 @@ class Argument(object):
     help: str = ""
     name: Union[str, None] = None  # set in __set_name__
 
-    NO_VALS = (None, "", MISSING)
-
     type_codecs = {
         bool: Codec(encode_bool, parse_bool),
         datetime: Codec(encode_datetime, parse_datetime),
@@ -39,17 +37,12 @@ class Argument(object):
 
     def __post_init__(self):
         encode, decode = self.type_codecs.get(self.type, (None, None))
-        self.encode = encode or str
-        self.decode = decode or self.type
-        if self.default not in (None, MISSING):
-            if isinstance(self.type, type):
-                if not isinstance(self.default, self.type):
-                    raise TypeError(f"default '{self.default}' is not of type '{self.type.__name__}'")
-            if self.valid and not self.valid(self.default):
-                raise ValueError(f"invalid default '{self.default}'")
+        self.encode = from_none(encode or str)
+        self.decode = into_none(decode or self.type)
 
     def __set_name__(self, cls, name):
         self.name = name
+        self._validate_default()
 
     def __get__(self, obj, cls=None):
         if obj is None:
@@ -66,21 +59,31 @@ class Argument(object):
             return
         obj._namespace[self.name] = self.validate(value)
 
+    def __delete__(self, obj):
+        obj._namespace.pop(self.name, None)
+
+    def _validate_default(self):
+        if self.default is MISSING:
+            if self.constant:
+                raise ValueError(f"constant argument '{self.name}' must have a default")
+        else:
+            self.default = self.validate(self.default)
+
     def validate(self, value):
-        if value in self.NO_VALS:
+        if value in (None, ""):
             if self.required:
                 raise ValueError(f"argument '{self.name}' is required")
-        elif value is not None:
-            if not isinstance(self.many, bool):
-                if len(value) != self.many:
-                    raise ValueError(f"argument '{self.name}' is not of correct length {self.many}")
-            if self.many is not False:
-                if all(isinstance(v, str) for v in value):
-                    value = [self.decode(v) for v in value]
-            elif isinstance(value, str):
-                value = self.decode(value)
-            if self.valid and not self.valid(value):
-                raise ValueError(f"invalid argument for '{self.name}'")
+            return None
+        if not isinstance(self.many, bool):
+            if len(value) != self.many:
+                raise ValueError(f"argument '{self.name}' is not of correct length {self.many}")
+        if self.many is not False:
+            if all(isinstance(v, str) for v in value):
+                value = [self.decode(v) for v in value]
+        elif isinstance(value, str):
+            value = self.decode(value)
+        if self.valid and not self.valid(value):
+            raise ValueError(f"invalid argument for '{self.name}'")
         return value
 
     def _get_name_or_flag(self, _seen) -> tuple:
@@ -181,9 +184,10 @@ class ArgParser(Mapping):
         cls._arg_parser = cls._parser_class(**kwargs)
         cls._arguments = cls._get_arguments()
         seen = set()
-        for name, arg in cls._arguments.items():
+        for arg in cls._arguments:
             arg.add_to_parser(cls._arg_parser, seen)
-            seen.add(name)
+            seen.add(arg.name)
+        cls._arg_names = frozenset(seen)
         cls._extend_doc()
 
     @classmethod
@@ -193,16 +197,16 @@ class ArgParser(Mapping):
             for name, arg in vars(c).items():
                 if isinstance(arg, Argument):
                     arguments[arg.name] = arg
-        return arguments
+        return tuple(arguments.values())
 
     @classmethod
     def _get_def_string(cls):
         line_end = '\n\t'
-        return f"{line_end}{line_end.join(map(str, cls._arguments.values()))}"
+        return f"{line_end}{line_end.join(map(str, cls._arguments))}"
 
     @classmethod
     def _defaults(cls):
-        return {name: arg.default for name, arg in cls._arguments.items() if arg.default is not MISSING}
+        return {arg.name: arg.default for arg in cls._arguments if arg.default is not MISSING}
 
     @classmethod
     def _parser_help(cls):
@@ -221,7 +225,8 @@ class ArgParser(Mapping):
     @classmethod
     def _load(cls, filename: str, mode: str = 'r'):
         with open(filename, mode) as f:
-            return cls(json.load(f))
+            json_dict = json.load(f)
+        return cls({n: getattr(cls, n).decode(js) for n, js in json_dict.items()})
 
     def __init__(self,
                  args: Union[str, Sequence, Mapping, None] = None,
@@ -248,8 +253,8 @@ class ArgParser(Mapping):
         arg_app.App(parser=self).mainloop()
 
     def _is_valid(self):
-        for name, arg in self._arguments.items():
-            if arg.required and name not in self:
+        for arg in self._arguments:
+            if arg.required and arg.name not in self:
                 return False
         return True
 
@@ -271,7 +276,7 @@ class ArgParser(Mapping):
         new_kwargs.update(kwargs)
         self._namespace.clear()
         for name, value in new_kwargs.items():
-            if name not in self._arguments:
+            if name not in self._arg_names:
                 raise AttributeError(f"'{name}' is not a configurable argument")
             setattr(self, name, value)
         return self._runnable()
@@ -285,9 +290,18 @@ class ArgParser(Mapping):
     def __getitem__(self, key: str):
         return self._namespace[key]
 
+    def _asdict(self):
+        result = {}
+        for arg in self._arguments:
+            value = getattr(self, arg.name, MISSING)
+            if value is not MISSING:
+                result[arg.name] = value
+        return result
+
     def _save(self, filename: str, mode: str = 'w'):
+        json_dict = {n: getattr(self.__class__, n).encode(a) for n, a in self._asdict().items()}
         with open(filename, mode) as f:
-            f.write(repr(self))
+            f.write(json.dumps(json_dict))
 
     def _call(self, target: Callable = None) -> Any:
         target = target or self._target
@@ -295,7 +309,7 @@ class ArgParser(Mapping):
 
     def _command(self, short=False):
         items = []
-        for arg in self._arguments.values():
+        for arg in self._arguments:
             cmd_key, cmd_value = arg.cmd_key(short), arg.cmd_value(self)
             if cmd_value:
                 items.append(f"{cmd_key} {cmd_value}")
