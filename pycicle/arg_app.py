@@ -3,7 +3,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 from tkinter.filedialog import asksaveasfilename, askopenfilename, askdirectory, askopenfilenames
 
-from clapy.basetypes import FileBase, FolderBase, ChoiceBase
+from pycicle.basetypes import FileBase, FolderBase, ChoiceBase
 
 
 def many_string(arg):

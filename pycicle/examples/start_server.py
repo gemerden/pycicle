@@ -1,4 +1,4 @@
-from clapy import ArgParser, Argument, File, Choice
+from pycicle import ArgParser, Argument, File, Choice
 
 
 def is_valid_host(ip):

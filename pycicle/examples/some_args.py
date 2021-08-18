@@ -1,4 +1,4 @@
-from clapy import ArgParser, Argument
+from pycicle import ArgParser, Argument
 from basetypes import File, Choice
 
 if __name__ == '__main__':

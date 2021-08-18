@@ -2,7 +2,7 @@ import os
 import unittest
 from itertools import product
 
-from clapy import ArgParser, Argument
+from pycicle import ArgParser, Argument
 from basetypes import File, Folder, Choice
 
 
