@@ -38,7 +38,7 @@ def show_text_dialog(win, title, text, wh, xy):
 
 class TkArgWrapper(object):
     strings = {
-        'name': lambda self, arg: '*' + arg.name if arg.required else arg.name + ':',
+        'name': lambda self, arg: '*' + arg.name if arg.required else arg.name,
         'value': lambda self, arg: str(self.get_value()),
         'type': lambda self, arg: arg.type.__name__,
         'many': lambda self, arg: many_string(arg),
