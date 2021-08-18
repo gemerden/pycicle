@@ -1,4 +1,4 @@
-from clapy import ArgParser, Argument, File
+from clapy import ArgParser, Argument, File, Choice
 
 
 def is_valid_host(ip):
@@ -17,8 +17,9 @@ class StartServerParser(ArgParser):
      - help
      - more help
     """
-
-    host = Argument(str, required=True, valid=is_valid_host,
+    proto = Argument(Choice('http', 'https'), required=True, default='http',
+                     help='the protocol the server will use')
+    host = Argument(str, required=True, default='0.0.0.0', valid=is_valid_host,
                     help='host IP of the server')
     port = Argument(str, required=True, valid=is_valid_port, default=8080,
                     help='port on which the server should run')
@@ -31,8 +32,7 @@ class StartServerParser(ArgParser):
 
 
 if __name__ == '__main__':
-    def start_server(host, port, restart, debug, logfile=None):
-        print(f"starting server on: {host}:{port} with restart: {restart}, debug: {debug} and logfile: {logfile}")
-
+    def start_server(proto, host, port, restart, debug, logfile=None):
+        print(f"starting server on: {proto}://{host}:{port} with restart: {restart}, debug: {debug} and logfile: {logfile}")
 
     StartServerParser(target=start_server)

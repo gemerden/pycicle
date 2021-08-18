@@ -3,7 +3,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 from tkinter.filedialog import asksaveasfilename, askopenfilename, askdirectory, askopenfilenames
 
-from basetypes import FileBase, FolderBase, ChoiceBase
+from clapy.basetypes import FileBase, FolderBase, ChoiceBase
 
 
 def many_string(arg):
@@ -23,6 +23,17 @@ class FittingText(tk.Text):
     def reset_height(self):
         height = self.tk.call((self._w, "count", "-update", "-displaylines", "1.0", "end"))
         self.configure(height=height)
+
+
+def show_text_dialog(win, title, text, wh, xy):
+    dialog = tk.Toplevel(win)
+    dialog.title(title)
+    dialog.geometry(f"{wh[0]}x{wh[1]}+{xy[0]}+{xy[1]}")
+    dialog.config(bg="white")
+    widget = tk.Text(dialog, bg="white", font=('Helvetica', 10, 'normal'))
+    widget.pack(expand=True, fill=tk.BOTH)
+    widget.insert(tk.END, text)
+    widget.config(state=tk.DISABLED)
 
 
 class TkArgWrapper(object):
@@ -141,8 +152,8 @@ class TkArgWrapper(object):
         entry_field.bind('<KeyRelease>', self.app.synchronize)
         entry_field.pack(side=tk.LEFT, fill=tk.X)
 
-        file_button = tk.Button(widget, text='...', command=command, height=1, width=3)
-        file_button.pack(side=tk.RIGHT, fill=tk.X)
+        file_button = tk.Button(widget, text='...', command=command, width=2)
+        file_button.pack(side=tk.RIGHT, fill=tk.X, padx=(4, 0))
         return widget
 
     def _get_file_value_widget(self, master, **kwargs):
@@ -245,7 +256,7 @@ class FormFrame(BaseFrame):
 
     def _create_command_bar(self):
         self.cmd_button = tk.Button(self, text='-/--', command=self.switch_command, font=self.bold_font)
-        self.cmd_button.grid(row=len(self.wrappers) + 1, column=0, padx=2, pady=4)
+        self.cmd_button.grid(row=len(self.wrappers) + 1, column=0)
 
         self.cmd_view = FittingText(self, width=64, height=1, font=self.norm_font)
         self.cmd_view.grid(row=len(self.wrappers) + 1, column=1, columnspan=3, sticky=tk.EW)
@@ -292,12 +303,13 @@ class ButtonBar(BaseFrame):
         return button
 
 
-class App(BaseFrame):
+class ArgApp(BaseFrame):
     icon_file = os.path.abspath(os.path.join(os.path.dirname(__file__), 'images/icon.png'))
 
     def __init__(self, parser):
         super().__init__(tk.Tk(), parser=parser)
         self.master.eval('tk::PlaceWindow . center')
+        self.synchronize()
 
     def _init(self, parser):
         self.parser = parser
@@ -325,14 +337,14 @@ class App(BaseFrame):
         return success
 
     def command(self, short):
-        return self.parser._command(short)
+        return self.parser._command(short, _no_prog=False)
 
     def run(self):
         if self.synchronize():
             if self.parser._runnable():
                 self.parser._call()
             else:
-                messagebox.showerror('nothing to run', 'no _runnable was configured for this app')
+                messagebox.showerror('nothing to run', 'no runnable target was configured for this app')
 
     def save(self):
         if self.synchronize():
@@ -370,14 +382,3 @@ class App(BaseFrame):
         x = self.winfo_rootx() + self.winfo_width() + 20
         y = self.winfo_rooty() - 36
         show_text_dialog(self.master, 'help', help_text, wh=(640, 640), xy=(x, y))
-
-
-def show_text_dialog(win, title, text, wh, xy):
-    dialog = tk.Toplevel(win)
-    dialog.title(title)
-    dialog.geometry(f"{wh[0]}x{wh[1]}+{xy[0]}+{xy[1]}")
-    dialog.config(bg="white")
-    widget = tk.Text(dialog, bg="white", font=('Helvetica', 10, 'normal'))
-    widget.pack(expand=True, fill=tk.BOTH)
-    widget.insert(tk.END, text)
-    widget.config(state=tk.DISABLED)

@@ -20,12 +20,12 @@ def dict_product(**iterators):
         yield dict(zip(names, values))
 
 
-def make_command(parser_class, kwargs, short=False):
+def make_test_command(parser_class, kwargs, short=False):
     """ somewhat more limited then real function """
 
     def create_value(arg, value):
         if isinstance(value, (list, tuple)):
-            return ' '.join(arg.encode(v) for v in value)
+            return ' '.join(arg._encode(v) for v in value)
         return arg.encode(value)
 
     cmd = ''
@@ -56,7 +56,7 @@ def args_asserter(**expected):
 def assert_product(parser_class, **iterators):
     for kwargs in dict_product(**iterators):
         asserter = args_asserter(**kwargs)
-        test_cmd = make_command(parser_class, kwargs)
+        test_cmd = make_test_command(parser_class, kwargs)
         parser = parser_class(test_cmd, target=asserter)
         assert test_cmd == parser._command()
 
@@ -91,10 +91,10 @@ class TestArgParser(unittest.TestCase):
                                    valid=(-1, 0, 1), many=([9, 11],), with_callback=(-1, 0, 1)):
             asserter = args_asserter(**kwargs)
 
-            cmd = make_command(Parser, kwargs)
+            cmd = make_test_command(Parser, kwargs)
             parser = Parser(cmd, target=asserter)
             assert parser._command(short=False) == cmd
-            assert parser._command(short=True) == make_command(Parser, kwargs, short=True)
+            assert parser._command(short=True) == make_test_command(Parser, kwargs, short=True)
 
     def test_valid(self):
         class Parser(ArgParser):
@@ -103,7 +103,7 @@ class TestArgParser(unittest.TestCase):
 
         for kwargs in dict_product(units=range(-3, 3), name=('an', 'ann', 'anna')):
             asserter = args_asserter(**kwargs)
-            cmd = make_command(Parser, kwargs)
+            cmd = make_test_command(Parser, kwargs)
             if kwargs['units'] < 0 or len(kwargs['name']) < 3:
                 with self.assertRaises(ValueError):
                     Parser(cmd, target=asserter)
@@ -119,10 +119,10 @@ class TestArgParser(unittest.TestCase):
             date_ = Argument(date, default=date(1999, 6, 8))
             time_ = Argument(time, default=time(12, 12, 12))
 
-        defaults = {arg.name: arg.default for arg in Parser._arguments.values()}
+        defaults = {arg.name: arg.default for arg in Parser._arguments}
         asserter = args_asserter(**defaults)
 
-        test_cmd = make_command(Parser, defaults)
+        test_cmd = make_test_command(Parser, defaults)
         parser = Parser(test_cmd,
                         target=asserter)
         real_cmd = parser._command()

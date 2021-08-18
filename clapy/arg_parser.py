@@ -77,8 +77,8 @@ class Argument(object):
         return self._decode(value)
 
     def validate(self, value, _default=False):
-        if not _default and value in (None, ""):
-            if self.required:
+        if value in (None, ""):
+            if not _default and self.required:
                 raise ValueError(f"argument '{self.name}' is required")
             return None
         if not isinstance(self.many, bool):
@@ -103,7 +103,7 @@ class Argument(object):
 
     def add_to_parser(self, parser, _seen):
         args = self._get_name_or_flag(_seen)
-        kwargs = dict(type=self.decode,
+        kwargs = dict(type=self._decode,
                       default=self.default,
                       nargs=None,
                       help=self.help)
@@ -148,6 +148,12 @@ class Argument(object):
             return None
         return self.encode(value)
 
+    def check_required(self, obj):
+        value = self.__get__(obj)
+        if self.required and value is None and self.default is not None:
+            return False
+        return True
+
     def __str__(self):
         def get_name(arg):
             try:
@@ -158,6 +164,9 @@ class Argument(object):
         if self.help.strip():
             return self.help_template.format(**{n: get_name(v) for n, v in self.__dict__.items()})
         return self.nohelp_template.format(**{n: get_name(v) for n, v in self.__dict__.items()})
+
+    def __repr__(self):
+        return super().__str__()
 
 
 class CallbackAction(Action):
@@ -235,7 +244,7 @@ class ArgParser(Mapping):
 
     @classmethod
     def _as_value_dict(cls, json_dict):
-        return {n: getattr(cls, n).decode(v) for n, v in json_dict.items()}
+        return {arg.name: arg.decode(json_dict[arg.name]) for arg in cls._arguments}
 
     @classmethod
     def _load(cls, filename: str, mode: str = 'r'):
@@ -274,18 +283,17 @@ class ArgParser(Mapping):
         return not args and len(sys.argv) == 1
 
     def _run_app(self):
-        arg_app.App(parser=self).mainloop()
+        arg_app.ArgApp(parser=self).mainloop()
 
     def _is_valid(self):
-        for arg in self._arguments:
-            if arg.required and arg.name not in self:
-                return False
-        return True
+        return all(arg.check_required(self) for arg in self._arguments)
 
     def _parse(self, args):
         if isinstance(args, str):
             args = [a.strip() for a in args.split()]
         try:
+            if args is None and "PYTEST_CURRENT_TEST" in os.environ:
+                args = sys.argv[2:]  # fix for running tests with pytest (extra cmd line arg)
             parsed = self._arg_parser.parse_args(args)
         except SystemExit as e:  # intercept when e.g. called with --help
             if e.code not in (None, 0):
@@ -306,7 +314,7 @@ class ArgParser(Mapping):
         return self._runnable()
 
     def _as_json_dict(self):
-        return {n: getattr(self.__class__, n).encode(getattr(self, n)) for n, v in self._namespace.items()}
+        return {arg.name: arg.encode(getattr(self, arg.name)) for arg in self._arguments}
 
     def _save(self, filename: str, mode: str = 'w'):
         with open(filename, mode) as f:
@@ -316,12 +324,14 @@ class ArgParser(Mapping):
         target = target or self._target
         return target(**self)
 
-    def _command(self, short=False):
+    def _command(self, short=False, _no_prog=True):
         items = []
         for arg in self._arguments:
             cmd_key, cmd_value = arg.cmd_key(short), arg.cmd_value(self)
             if cmd_value:
                 items.append(f"{cmd_key} {cmd_value}")
+        if _no_prog:
+            return ' '.join(items).strip()
         program = os.path.basename(sys.argv[0])
         return f"{program} {' '.join(items).strip()}".strip()
 
