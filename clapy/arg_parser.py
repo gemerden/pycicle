@@ -44,7 +44,7 @@ class Argument(object):
 
     def __set_name__(self, cls, name):
         self.name = name
-        self.default = self.validate(self.default, _check_default=True)
+        self.default = self.validate(self.default, _default=True)
 
     def __get__(self, obj, cls=None):
         if obj is None:
@@ -70,15 +70,14 @@ class Argument(object):
         return self._encode(value)
 
     def decode(self, value):
-        value = value
         if value == '':
             return None
         if self.many:
             return [self._decode(v) for v in value]
         return self._decode(value)
 
-    def validate(self, value, _check_default=False):
-        if not _check_default and value in (None, ""):
+    def validate(self, value, _default=False):
+        if not _default and value in (None, ""):
             if self.required:
                 raise ValueError(f"argument '{self.name}' is required")
             return None
@@ -97,7 +96,7 @@ class Argument(object):
         if not self.positional:
             if self.name[0] in set(a[0] for a in _seen):
                 if len(self.name) == 1:
-                    raise ValueError(f"'{self.name}' already exist as a short argument name")
+                    raise ValueError(f"'-{self.name[0]}' already exist as a short argument name")
                 return '--' + self.name,
             return '-' + self.name[0], '--' + self.name
         return self.name,
