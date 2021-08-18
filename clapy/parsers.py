@@ -6,15 +6,15 @@ def parse_bool(arg,
                false_set=frozenset(('no', 'false', 'f', 'n', '0'))):
     if isinstance(arg, (bool, int)):
         return bool(arg)
-    if arg.lower() in true_set:
+    if arg.strip().lower() in true_set:
         return True
-    if arg.lower() in false_set:
+    if arg.strip().lower() in false_set:
         return False
     raise ValueError('Boolean value expected')
 
 
 def encode_bool(val):
-    return '1' if val else '0'
+    return 'yes' if val else 'no'
 
 
 def encode_datetime(dt):

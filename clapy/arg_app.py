@@ -11,7 +11,18 @@ def many_string(arg):
         return 'yes'
     if arg.many is False:
         return 'no'
-    return str(arg.many)
+    return str(arg.many)  # in case of number
+
+
+class FittingText(tk.Text):
+    def insert(self, *args, **kwargs):
+        result = super().insert(*args, **kwargs)
+        self.reset_height()
+        return result
+
+    def reset_height(self):
+        height = self.tk.call((self._w, "count", "-update", "-displaylines", "1.0", "end"))
+        self.configure(height=height)
 
 
 class TkArgWrapper(object):
@@ -34,16 +45,12 @@ class TkArgWrapper(object):
         self.widget = None  # reference for validation update
 
     def get_value(self):
-        try:
-            value = getattr(self.app.parser,
-                            self.argument.name)
-        except AttributeError:
-            value = self.argument.default or None
-        if self.argument.type is bool:  # special case, hard to do otherwise
-            value = bool(value)
-        elif self.argument.type not in self.factory:
-            value = self.argument.encode(value)
-        return value
+        value = getattr(self.app.parser,
+                        self.argument.name)
+        result = self.argument.encode(value)
+        if self.argument.many is not False:
+            return ', '.join(result)
+        return result
 
     def sync_value(self, event=None):
         value = self.var.get()
@@ -78,14 +85,15 @@ class TkArgWrapper(object):
         return tk.Label(master, text=self._get_string(name), **kwargs)
 
     def _get_help_widget(self, master, **kwargs):
-        if not self.argument.help:
+        if not self.argument.help.strip():
             return tk.Label(master)
 
         def show():
             w, h = (320, 120)
             x = button.winfo_rootx() + button.winfo_width() + 5
             y = button.winfo_rooty() - h - 30
-            show_text_dialog(self.app.master, title='help', text=self.argument.help, wh=(w, h), xy=(x, y))
+            show_text_dialog(self.app.master, title=f"help: {self.argument.name}",
+                             text=self.argument.help, wh=(w, h), xy=(x, y))
 
         button = tk.Button(master, text='?', width=3, command=show, **kwargs)
         return button
@@ -112,17 +120,13 @@ class TkArgWrapper(object):
         widget.bind('<KeyRelease>', self.app.synchronize)
         return widget
 
-    def _get_boolean_value_widget(self, master, **kwargs):
-        self.var = tk.BooleanVar(value=self.get_value())
-        kwargs.update(variable=self.var, command=self.app.synchronize, anchor=tk.W)
-        return tk.Checkbutton(master, **kwargs)
-
     def _open_file_dialog(self):
+        filetypes = [('', '.' + ext) for ext in self.argument.type.extensions]
         if self.argument.many is not False:
-            filename_s = askopenfilenames(filetypes=['*.' + ext for ext in self.argument.type.extensions])
+            filename_s = askopenfilenames(filetypes=filetypes)
         else:
-            filename_s = askopenfilename(filetypes=['*.' + ext for ext in self.argument.type.extensions])
-        self.var.set(filename_s)
+            filename_s = [askopenfilename(filetypes=filetypes)]  # to make next line
+        self.var.set(', '.join(filename_s))
         self.app.synchronize()
 
     def _open_folder_dialog(self):
@@ -147,7 +151,7 @@ class TkArgWrapper(object):
     def _get_folder_value_widget(self, master, **kwargs):
         return self._get_file_folder_value_widget(master, command=self._open_folder_dialog, **kwargs)
 
-    def _get_choice_value_widget(self, master, **kwargs):
+    def _get_base_choice_value_widget(self, master, values, **kwargs):
         if self.argument.many is not False:
             return self._get_string_value_widget(master, **kwargs)
 
@@ -158,12 +162,18 @@ class TkArgWrapper(object):
         if 'state' not in kwargs:
             kwargs['state'] = "readonly"
         self.var = tk.StringVar(value=self.get_value())
-        values = [] if self.argument.required else ['']
-        values.extend(map(str, self.argument.type.choices))
-        widget = ttk.Combobox(master, values=values)
+        start_values = [] if self.argument.required else ['']
+        widget = ttk.Combobox(master, values=start_values + values)
         widget.config(textvariable=self.var, **kwargs)
         widget.bind("<<ComboboxSelected>>", on_select)
         return widget
+
+    def _get_choice_value_widget(self, master, **kwargs):
+        values = list(self.argument.type.choices)
+        return self._get_base_choice_value_widget(master, values=values, **kwargs)
+
+    def _get_boolean_value_widget(self, master, **kwargs):
+        return self._get_base_choice_value_widget(master, values=['no', 'yes'], **kwargs)
 
 
 # ==================================================================
@@ -237,7 +247,7 @@ class FormFrame(BaseFrame):
         self.cmd_button = tk.Button(self, text='-/--', command=self.switch_command, font=self.bold_font)
         self.cmd_button.grid(row=len(self.wrappers) + 1, column=0, padx=2, pady=4)
 
-        self.cmd_view = tk.Text(self, width=64, height=1, font=self.norm_font)
+        self.cmd_view = FittingText(self, width=64, height=1, font=self.norm_font)
         self.cmd_view.grid(row=len(self.wrappers) + 1, column=1, columnspan=3, sticky=tk.EW)
 
     def switch_command(self):
@@ -334,10 +344,13 @@ class App(BaseFrame):
     def save_as(self):
         if self.synchronize():
             self.filename = asksaveasfilename(defaultextension=".json")
-            self.parser._save(self.filename)
+            if self.filename:
+                self.parser._save(self.filename)
 
     def load(self):
-        self.filename = askopenfilename(defaultextension=".json")
+        filename = askopenfilename(defaultextension=".json")
+        if filename:
+            self.filename = filename
         try:
             self.parser = self.parser._load(self.filename)
         except Exception as e:

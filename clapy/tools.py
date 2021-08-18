@@ -28,24 +28,3 @@ def get_stdout():
 
 Codec = namedtuple('Codec', ['encode', 'decode'])
 
-
-def from_none(func):
-    @wraps(func)
-    def inner(value=None):
-        if value is None:
-            return ''
-        return func(value)
-
-    return inner
-
-
-def into_none(func):
-    @wraps(func)
-    def inner(value=''):
-        if value.strip() == '':
-            return None
-        return func(value)
-
-    return inner
-
-
