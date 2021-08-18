@@ -314,7 +314,7 @@ class ArgApp(BaseFrame):
     def _init(self, parser):
         self.parser = parser
         self.filename = None
-        self.master.title('ClaPy')
+        self.master.title(f"PyCicle: {type(parser).__name__}")
         icon = tk.PhotoImage(file=self.icon_file)
         self.master.iconphoto(False, icon)
         self.grid(row=0, column=0, padx=10, pady=5)

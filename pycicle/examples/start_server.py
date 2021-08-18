@@ -11,7 +11,7 @@ def is_valid_port(port):
     return 10 <= int(port) <= 9999
 
 
-class StartServerParser(ArgParser):
+class StartServer(ArgParser):
     """
     this is the help text for the parser:
      - help
@@ -35,4 +35,4 @@ if __name__ == '__main__':
     def start_server(proto, host, port, restart, debug, logfile=None):
         print(f"starting server on: {proto}://{host}:{port} with restart: {restart}, debug: {debug} and logfile: {logfile}")
 
-    StartServerParser(target=start_server)
+    StartServer(target=start_server)
