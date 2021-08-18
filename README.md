@@ -52,7 +52,7 @@ if __name__ == '__main__':
 
 Running this file from the command line with arguments in the usual style ( e.g. `python run_server.py -p 80`)  will work as normal: it will call `start_server` with the provided arguments. just calling  `python run_server.py` however will open a window like this:
 
-![image-20210818183717044](C:\Users\gemer\AppData\Roaming\Typora\typora-user-images\image-20210818183717044.png)
+![window](pycicle/images/window.PNG)
 
 
 
