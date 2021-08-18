@@ -3,7 +3,7 @@ import unittest
 from itertools import product
 
 from pycicle import ArgParser, Argument
-from basetypes import File, Folder, Choice
+from pycicle import File, Folder, Choice
 
 
 def yielder(arg):

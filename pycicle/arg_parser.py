@@ -8,8 +8,8 @@ from functools import partial
 from typing import Mapping, Callable, Union, Any, Sequence, Iterable
 
 from pycicle import arg_app
-from tools import get_stdout, Codec
-from parsers import parse_bool, encode_bool, encode_datetime, parse_datetime, encode_date, parse_date, \
+from pycicle.tools import get_stdout, Codec
+from pycicle.parsers import parse_bool, encode_bool, encode_datetime, parse_datetime, encode_date, parse_date, \
     encode_time, parse_time, parse_timedelta, encode_timedelta
 
 
