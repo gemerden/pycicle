@@ -153,8 +153,8 @@ class TestArgParser(unittest.TestCase):
             three = Argument(File('.txt', exists=False), many=2)
 
         assert_product(Parser, one=('c:\\does_not_exist.txt', '..\\unittests\\does_not_exist.txt'),
-                               two=(__file__, '..\\unittests\\test_pycicle.py'),
-                               three=(['c:\\does_not_exist.txt', '..\\unittests\\does_not_exist.txt'],))
+                       two=(__file__, '..\\unittests\\test_pycicle.py'),
+                       three=(['c:\\does_not_exist.txt', '..\\unittests\\does_not_exist.txt'],))
 
     def test_folders(self):
         class Parser(ArgParser):

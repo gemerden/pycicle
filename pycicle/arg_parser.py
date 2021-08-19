@@ -12,6 +12,13 @@ from pycicle.tools import get_stdout, Codec
 from pycicle.parsers import parse_bool, encode_bool, encode_datetime, parse_datetime, encode_date, parse_date, \
     encode_time, parse_time, parse_timedelta, encode_timedelta
 
+"""
+TODO: 
+ - review callback use with GUI
+ - check for multiple positionals
+ - set the namespace for argparser and use it in callback?
+"""
+
 
 @dataclass
 class Argument(object):

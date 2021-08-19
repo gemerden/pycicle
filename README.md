@@ -10,12 +10,17 @@ This module has 2 main purposes:
 
 *compared to using `argparse` or `optparse` from the standard library.
 
+## Installation
+
+PyCicle can be easily installed with pip installed with `pip install pycicle`.
+
 ## Example
 
 To start a server you can configure the parser as follows:
 
 ```python
 # file: run_server.py
+from somewhere import Server  # some webserver
 from pycicle import ArgParser, Argument, File, Choice
 
 def is_valid_host(ip):
@@ -45,12 +50,12 @@ class StartServer(ArgParser):
 
 if __name__ == '__main__':
     def start_server(proto, host, port, restart, debug, logfile=None):
-        print(f"starting server on: {proto}://{host}:{port} with restart: {restart}, debug: {debug} and logfile: {logfile}")
+        Server(proto=proto, host=host, port=port, log=logfile).run_forever(restart=restart, debug=debug)
 
     StartServer(target=start_server)
 ```
 
-Running this file from the command line with arguments in the usual style ( e.g. `python run_server.py -p 80`)  will work as normal: it will call `start_server` with the provided arguments. just calling  `python run_server.py` however will open a window like this:
+Running this file from the command line with arguments in the usual style ( e.g. `python run_server.py -p 80`)  will work as normal: it will call `start_server` with the provided arguments. Just calling  `python run_server.py` however will open a window like this:
 
 ![window](pycicle/images/window.PNG)
 
