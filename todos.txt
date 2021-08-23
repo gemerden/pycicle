@@ -1,9 +1,9 @@
 
- - review callback use with GUI
- - check for multiple positionals
- - set the namespace for argparser and use it in callback?
+ - review callback use with GUI OK
+ - check for multiple positionals OK
+ - set the namespace for argparser and use it in callback? NO
  - check command line version of file paths (for linux)
- - make ChoiceBase subclass of str
+ - make ChoiceBase subclass of str: OK, baseclass is dynamically derived from choices param
  - many choices in GUI (radio button)
  - many files append in Entry line
  - check running from command line
