@@ -6,12 +6,76 @@ from tkinter.filedialog import asksaveasfilename, askopenfilename, askdirectory,
 from pycicle.basetypes import FileBase, FolderBase, ChoiceBase
 
 
-def many_string(arg):
+def many_column_string(arg):
     if arg.many is True:
         return 'yes'
     if arg.many is False:
         return 'no'
     return str(arg.many)  # in case of number
+
+
+def _get_dialog(win, title, xy, wh=None):
+    dialog = tk.Toplevel(win)
+    dialog.title(title)
+    if wh:
+        dialog.geometry(f"{wh[0]}x{wh[1]}+{xy[0]}+{xy[1]}")
+    else:
+        dialog.geometry(f"+{xy[0]}+{xy[1]}")
+    return dialog
+
+
+def show_text_dialog(win, title, text, wh, xy):
+    dialog = _get_dialog(win, title, wh, xy)
+    dialog.config(bg="white")
+    widget = tk.Text(dialog, bg="white", font=('Helvetica', 10, 'normal'))
+    widget.pack(expand=True, fill=tk.BOTH)
+    widget.insert(tk.END, text)
+    widget.config(state=tk.DISABLED)
+
+
+class BaseFrame(tk.Frame):
+    norm_font = ('Helvetica', 10, 'normal')
+    bold_font = ('Helvetica', 10, 'bold')
+    head_kwargs = {'font': bold_font, 'anchor': tk.W}
+    cell_kwargs = {'font': norm_font}
+    grid_kwargs = {'padx': 4, 'pady': 1, 'sticky': tk.W}
+
+    def __init__(self, master=None, **kwargs):
+        super().__init__(master)
+        self.master = master
+        self._init(**kwargs)  # before create widgets
+        self.create_widgets()
+
+    def _init(self, **kwargs):
+        """" override for initialization before widgets are created """
+        pass
+
+    def create_widgets(self):
+        raise NotImplementedError
+
+
+def show_multi_choice_dialog(win, title, chosen, xy, wh=None):
+    dialog = _get_dialog(win, title, wh=wh, xy=xy)
+    dialog.grab_set()
+    chosen_vars = {choice: tk.BooleanVar(value=boolean) for choice, boolean in chosen.items()}
+
+    def on_ok():
+        chosen.update({choice: var.get() for choice, var in chosen_vars.items()})
+        dialog.destroy()
+
+    def get_button(choice):
+        return tk.Checkbutton(dialog, variable=chosen_vars[choice])
+
+    def get_label(choice):
+        return tk.Label(dialog, text=str(choice))
+
+    for row, choice in enumerate(chosen):
+        get_button(choice).grid(row=row, column=0, padx=(5, 0))
+        get_label(choice).grid(row=row, column=1, sticky=tk.W)
+
+    ok_button = tk.Button(dialog, text='OK', command=on_ok, width=6)
+    ok_button.grid(row=len(chosen), column=1, padx=4, pady=5)
+    dialog.wait_window()
 
 
 class FittingText(tk.Text):
@@ -25,23 +89,12 @@ class FittingText(tk.Text):
         self.configure(height=height)
 
 
-def show_text_dialog(win, title, text, wh, xy):
-    dialog = tk.Toplevel(win)
-    dialog.title(title)
-    dialog.geometry(f"{wh[0]}x{wh[1]}+{xy[0]}+{xy[1]}")
-    dialog.config(bg="white")
-    widget = tk.Text(dialog, bg="white", font=('Helvetica', 10, 'normal'))
-    widget.pack(expand=True, fill=tk.BOTH)
-    widget.insert(tk.END, text)
-    widget.config(state=tk.DISABLED)
-
-
 class TkArgWrapper(object):
     strings = {
         'name': lambda self, arg: '*' + arg.name if arg.required else arg.name,
         'value': lambda self, arg: str(self.get_value()),
         'type': lambda self, arg: arg.type.__name__,
-        'many': lambda self, arg: many_string(arg),
+        'many': lambda self, arg: many_column_string(arg),
         'help': lambda self, arg: arg.help,
     }
 
@@ -142,8 +195,7 @@ class TkArgWrapper(object):
         self.var.set(askdirectory(mustexist=self.argument.type.exists))
         self.app.synchronize()
 
-    def _get_file_folder_value_widget(self, master, command, **kwargs):
-        self.var = tk.StringVar(value=self.get_value())
+    def _get_dialog_value_widget(self, master, command, **kwargs):
         widget = tk.Frame(master=master)
 
         entry_field = tk.Entry(widget, textvariable=self.var, **kwargs)
@@ -155,15 +207,14 @@ class TkArgWrapper(object):
         return widget
 
     def _get_file_value_widget(self, master, **kwargs):
-        return self._get_file_folder_value_widget(master, command=self._open_file_dialog, **kwargs)
+        self.var = tk.StringVar(value=self.get_value())
+        return self._get_dialog_value_widget(master, command=self._open_file_dialog, **kwargs)
 
     def _get_folder_value_widget(self, master, **kwargs):
-        return self._get_file_folder_value_widget(master, command=self._open_folder_dialog, **kwargs)
+        self.var = tk.StringVar(value=self.get_value())
+        return self._get_dialog_value_widget(master, command=self._open_folder_dialog, **kwargs)
 
     def _get_base_choice_value_widget(self, master, values, **kwargs):
-        if self.argument.many is not False:
-            return self._get_string_value_widget(master, **kwargs)
-
         def on_select(event):
             self.var.set(widget.get())
             self.app.synchronize()
@@ -178,35 +229,35 @@ class TkArgWrapper(object):
         return widget
 
     def _get_choice_value_widget(self, master, **kwargs):
+        if self.argument.many is not False:
+            return self._get_multi_choice_value_widget(master, **kwargs)
+
         values = list(self.argument.type.choices)
         return self._get_base_choice_value_widget(master, values=values, **kwargs)
 
     def _get_boolean_value_widget(self, master, **kwargs):
+        if self.argument.many is not False:
+            return self._get_multi_choice_value_widget(master, **kwargs)
         return self._get_base_choice_value_widget(master, values=['no', 'yes'], **kwargs)
+
+    def _get_multi_choice_value_widget(self, master, **kwargs):
+        self.var = tk.StringVar(value=self.get_value())
+        choices = list(self.argument.type.choices)
+        chosen_values = set(c.strip() for c in self.var.get().split(','))
+        chosen = {choice: (choice in chosen_values) for choice in choices}
+
+        def show():
+            x = self.app.winfo_rootx() + self.app.winfo_width() + 5
+            y = self.app.winfo_rooty() - 90
+            show_multi_choice_dialog(self.app.master, title=f"{self.argument.name}",
+                                     chosen=chosen, xy=(x, y))
+            self.var.set(', '.join(choice for choice, boolean in chosen.items() if boolean))
+            self.app.synchronize()
+
+        return self._get_dialog_value_widget(master=master, command=show, **kwargs)
 
 
 # ==================================================================
-
-class BaseFrame(tk.Frame):
-    norm_font = ('Helvetica', 10, 'normal')
-    bold_font = ('Helvetica', 10, 'bold')
-    head_kwargs = {'font': bold_font, 'anchor': tk.W}
-    cell_kwargs = {'font': norm_font}
-    grid_kwargs = {'padx': 4, 'pady': 1, 'sticky': tk.W}
-
-    def __init__(self, master=None, **kwargs):
-        super().__init__(master)
-        self.master = master
-        self._init(**kwargs)  # before create widgets
-        self.create_widgets()
-
-    def _init(self, **kwargs):
-        """" initialization before widgets are created """
-        pass
-
-    def create_widgets(self):
-        raise NotImplementedError
-
 
 class FormFrame(BaseFrame):
     col_names = ('name', 'value', 'type', 'many', 'help')
