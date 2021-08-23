@@ -304,13 +304,14 @@ class ButtonBar(BaseFrame):
 class ArgApp(BaseFrame):
     icon_file = os.path.abspath(os.path.join(os.path.dirname(__file__), 'images/icon.png'))
 
-    def __init__(self, parser):
-        super().__init__(tk.Tk(), parser=parser)
+    def __init__(self, parser, target):
+        super().__init__(tk.Tk(), parser=parser, target=target)
         self.master.eval('tk::PlaceWindow . center')
         self.synchronize()
 
-    def _init(self, parser):
+    def _init(self, parser, target):
         self.parser = parser
+        self.target = target
         self.filename = None
         self.master.title(f"PyCicle: {type(parser).__name__}")
         icon = tk.PhotoImage(file=self.icon_file)
@@ -339,8 +340,8 @@ class ArgApp(BaseFrame):
 
     def run(self):
         if self.synchronize():
-            if self.parser._runnable():
-                self.parser._call()
+            if self.target:
+                self.parser(self.target)
             else:
                 messagebox.showerror('nothing to run', 'no runnable target was configured for this app')
 
