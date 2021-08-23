@@ -74,20 +74,19 @@ class TestArgParser(unittest.TestCase):
 
         class Parser(ArgParser):
             pos = Argument(int, positional=True)
-            const = Argument(int, constant=True)
             default = Argument(int, default=0)
             required = Argument(int, required=True)
             valid = Argument(int, valid=lambda v: v < 10)
             many = Argument(int, many=True)
             with_callback = Argument(int, callback=lambda v, n: callback_target.extend([v, n]))
 
-        asserter = args_asserter(pos=1, const=2, default=0, required=3, valid=4, many=[1, 2], with_callback=5)
+        asserter = args_asserter(pos=1, default=0, required=3, valid=4, many=[1, 2], with_callback=5)
 
-        parser = Parser('1 -c 2 -r 3 -v 4 -m 1 2 --w 5', target=asserter)
+        parser = Parser('1 -r 3 -v 4 -m 1 2 --w 5', target=asserter)
         parser._call(asserter)
         assert callback_target[0] == 5
 
-        for kwargs in dict_product(pos=(-1, 0, 1), const=7, default=(-1, 0, 1), required=(-1, 0, 1),
+        for kwargs in dict_product(pos=(-1, 0, 1), default=(-1, 0, 1), required=(-1, 0, 1),
                                    valid=(-1, 0, 1), many=([9, 11],), with_callback=(-1, 0, 1)):
             asserter = args_asserter(**kwargs)
 
@@ -165,6 +164,20 @@ class TestArgParser(unittest.TestCase):
         assert_product(Parser, one=('c:\\does_not_exist', '..\\unittests\\does_not_exist'),
                        two=(os.path.dirname(__file__), '..\\unittests'),
                        three=(['c:\\does_not_exist', '..\\unittests\\does_not_exist'],))
+
+    def test_positional_ordering(self):
+        """ check whether positional arguments after non-positional arguments raise errors """
+        class Parser(ArgParser):  # must be OK
+            one = Argument(int, positional=True)
+            two = Argument(int, positional=False)
+
+        with self.assertRaises(ValueError):
+            class Parser(ArgParser):
+                one = Argument(int, positional=False)
+                two = Argument(int, positional=True)
+
+
+
 
 
 if __name__ == '__main__':
