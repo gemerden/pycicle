@@ -87,8 +87,6 @@ class TkArgWrapper(object):
 
     def create_widget(self, master, name, **kwargs):
         if name == 'value':
-            if self.argument.constant:
-                kwargs['state'] = tk.DISABLED
             self.widget = self._get_value_widget(master, **kwargs)
             return self.widget
         if name == 'help':

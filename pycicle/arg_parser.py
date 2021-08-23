@@ -12,13 +12,6 @@ from pycicle.tools import get_stdout, Codec
 from pycicle.parsers import parse_bool, encode_bool, encode_datetime, parse_datetime, encode_date, parse_date, \
     encode_time, parse_time, parse_timedelta, encode_timedelta
 
-"""
-TODO: 
- - review callback use with GUI
- - check for multiple positionals
- - set the namespace for argparser and use it in callback?
-"""
-
 
 @dataclass
 class Argument(object):
@@ -27,7 +20,6 @@ class Argument(object):
     positional: bool = False
     default: Any = None
     required: bool = False
-    constant: bool = False
     valid: Callable = None
     callback: Callable[[Any, Namespace], Any] = None
     help: str = ""
@@ -40,6 +32,8 @@ class Argument(object):
         date: Codec(encode_date, parse_date),
         time: Codec(encode_time, parse_time),
     }
+
+    reserved = {'help'}
 
     help_template = "{name} {args}: \t\t\t{type}, \tdefault: {default}, \thelp: {help}"
     nohelp_template = "{name} {args}: \t\t\t{type}, \tdefault: {default}"
@@ -62,8 +56,6 @@ class Argument(object):
             return self.default
 
     def __set__(self, obj, value):
-        if self.constant and self.name in obj._namespace:
-            return
         obj._namespace[self.name] = self.validate(value)
 
     def __delete__(self, obj):
@@ -86,30 +78,34 @@ class Argument(object):
     def validate(self, value, _default=False):
         if value in (None, ""):
             if not _default and self.required:
-                raise ValueError(f"argument '{self.name}' is required")
+                raise ValueError(f"argument value '{self.name}' is required")
             return None
         if not isinstance(self.many, bool):
             if len(value) != self.many:
-                raise ValueError(f"argument '{self.name}' is not of correct length {self.many}")
+                raise ValueError(f"argument value for '{self.name}' is not of correct length {self.many}")
         if isinstance(value, str) or (self.many is not False and all(isinstance(v, str) for v in value)):
             value = self.decode(value)
         if value is not None and self.valid and not self.valid(value):
-            raise ValueError(f"invalid argument for '{self.name}'")
+            raise ValueError(f"invalid value for argument '{self.name}'")
         return value
 
-    def _get_name_or_flag(self, _seen) -> tuple:
-        if self.name in _seen:
-            raise ValueError(f"argument name '{self.name}' is already in use")
-        if not self.positional:
-            if self.name[0] in set(a[0] for a in _seen):
+    def _get_name_or_flag(self, seen) -> tuple:
+        if self.name in self.reserved:
+            raise ValueError(f"argument name '{self.name}' is reserved")
+
+        if self.positional:
+            if not all(arg.positional for arg in seen.values()):
+                raise ValueError(f"cannot place positional argument '{self.name}' after non-positional arguments")
+        else:
+            if self.name[0] in set(a[0] for a in seen):
                 if len(self.name) == 1:
                     raise ValueError(f"'-{self.name[0]}' already exist as a short argument name")
                 return '--' + self.name,
             return '-' + self.name[0], '--' + self.name
         return self.name,
 
-    def add_to_parser(self, parser, _seen):
-        args = self._get_name_or_flag(_seen)
+    def add_to_parser(self, parser, seen):
+        args = self._get_name_or_flag(seen)
         kwargs = dict(type=self._decode,
                       default=self.default,
                       nargs=None,
@@ -126,9 +122,6 @@ class Argument(object):
                 kwargs.update(nargs='?')
         else:
             kwargs.update(required=self.required)
-        if self.constant:
-            kwargs.update(const=self.constant,
-                          nargs='?')
         if self.callback:
             kwargs.update(action=partial(CallbackAction,
                                          callback=self.callback))
@@ -214,10 +207,10 @@ class ArgParser(Mapping):
         super().__init_subclass__(**kwargs)
         cls._arg_parser = cls._parser_class(**kwargs)
         cls._arguments = cls._get_arguments()
-        seen = cls._reserved.copy()
+        seen = {}
         for arg in cls._arguments:
             arg.add_to_parser(cls._arg_parser, seen)
-            seen.add(arg.name)
+            seen[arg.name] = arg
         cls._arg_names = frozenset(seen)
         cls._extend_doc()
 
