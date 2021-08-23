@@ -13,9 +13,6 @@ class FileFolderBase(str):
             raise ValueError(f"file: {str(path)} does not exist")
         return super().__new__(cls, path)
 
-    def __str__(self):
-        return self.replace('\\\\', '/')
-
 
 class FileBase(FileFolderBase):
     extensions = ()
@@ -64,6 +61,7 @@ class ChoiceBase(object):
 
 
 def Choice(*choices):
+    """ """
     if not len(choices):
         raise ValueError(f"cannot define Choice without choices")
     if any(type(c) != type(choices[0]) for c in choices):
@@ -77,5 +75,6 @@ if __name__ == '__main__':
     print(isinstance(f, file))
 
     choice = Choice('a', 'b', 'c')
+    c = choice('b')
+    print(c, isinstance(c, choice))
     c = choice('d')
-    print(isinstance(c, choice))
