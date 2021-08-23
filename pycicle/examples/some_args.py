@@ -20,7 +20,7 @@ if __name__ == '__main__':
         time = Argument(time)
         callback = Argument(int, callback=lambda v, ns: print('YES'))
         file = Argument(File('.json'), many=True)
-        choice = Argument(Choice("apple", "pear", "orange"))
+        choice = Argument(Choice("apple", "pear", "orange"), many=True)
 
 
     def printer(**kwargs):
