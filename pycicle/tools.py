@@ -1,6 +1,5 @@
 import sys
 from collections import namedtuple
-from functools import wraps
 from io import StringIO
 from contextlib import contextmanager
 
@@ -16,14 +15,18 @@ class Missing(object):
 
 
 MISSING = Missing()
+
+
 @contextmanager
 def get_stdout():
     backup = sys.stdout
     sys.stdout = StringIO()
-    yield lambda: string
-    string = sys.stdout.getvalue()
-    sys.stdout.close()
-    sys.stdout = backup
+    try:
+        yield lambda: string
+        string = sys.stdout.getvalue()
+    finally:
+        sys.stdout.close()
+        sys.stdout = backup
 
 
 Codec = namedtuple('Codec', ['encode', 'decode'])
