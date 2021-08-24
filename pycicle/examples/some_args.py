@@ -21,6 +21,7 @@ if __name__ == '__main__':
         callback = Argument(int, callback=lambda v, ns: print('YES'))
         file = Argument(File('.json'), many=True)
         choice = Argument(Choice("apple", "pear", "orange"), many=True)
+        switch = Argument(int, default=2, novalue=3)
 
 
     def printer(**kwargs):

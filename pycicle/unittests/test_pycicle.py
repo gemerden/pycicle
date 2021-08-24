@@ -100,7 +100,7 @@ class TestArgParser(unittest.TestCase):
                         target=asserter)
         real_cmd = parser._command()
         assert test_cmd == real_cmd
-        parser2 = Parser(use_app=False,
+        parser2 = Parser(use_gui=False,
                          target=asserter)
         assert test_cmd == parser2._command()
 
