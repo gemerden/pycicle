@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, date, time
 from functools import partial
 from typing import Mapping, Callable, Union, Any, Sequence, Iterable
 
-from pycicle import arg_app
+from pycicle import arg_gui
 from pycicle.tools import get_stdout, Codec, MISSING
 from pycicle.parsers import parse_bool, encode_bool, encode_datetime, parse_datetime, encode_date, parse_date, \
     encode_time, parse_time, parse_timedelta, encode_timedelta
@@ -258,9 +258,9 @@ class ArgParser(Mapping):
     def __init__(self,
                  args: Union[str, Sequence, Mapping, None] = None,
                  target: Callable = None,
-                 use_app: bool = True):
-        if use_app and self._no_arguments(args):
-            self._run_app(target)
+                 use_gui: bool = True):
+        if use_gui and self._no_arguments(args):
+            self._run_gui(target)
         else:
             self._init_parse(args)
             if target:
@@ -278,8 +278,8 @@ class ArgParser(Mapping):
     def _no_arguments(self, args):
         return not args and len(sys.argv) == 1
 
-    def _run_app(self, target):
-        arg_app.ArgApp(parser=self, target=target).mainloop()
+    def _run_gui(self, target):
+        arg_gui.ArgGui(parser=self, target=target).mainloop()
 
     def _init_parse(self, args):
         if args is None and "PYTEST_CURRENT_TEST" in os.environ:
