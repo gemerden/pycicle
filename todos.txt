@@ -4,6 +4,6 @@
  - set the namespace for argparser and use it in callback? NO = OK
  - make ChoiceBase subclass of str: OK, baseclass is dynamically derived from choices param
  - many choices in GUI (radio button) OK
+ - many files append in Entry line OK
  - check command line version of file paths (for linux) TEST
- - many files append in Entry line
  - check running from command line
