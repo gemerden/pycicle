@@ -117,10 +117,10 @@ class TkArgWrapper(object):
         return result
 
     def sync_value(self, event=None):
-        value = self.var.get()
+        value = self.var.get().strip(', ')
         try:
             if self.argument.many is not False:
-                value = [v.strip() for v in value.strip(',').split(',') if v.strip()]
+                value = [v.strip() for v in value.split(',') if v.strip()]
             setattr(self.app.parser, self.argument.name, value)
         except Exception as e:  # to also catch TclError, ArgumentTypeError
             self.widget.config(highlightthickness=1,
@@ -184,15 +184,20 @@ class TkArgWrapper(object):
 
     def _open_file_dialog(self):
         filetypes = [('', '.' + ext) for ext in self.argument.type.extensions]
-        if self.argument.many is not False:
-            filename_s = askopenfilenames(filetypes=filetypes)
+        if self.argument.many is not False:  # append in case of many
+            filenames = askopenfilenames(filetypes=filetypes)
+            self.var.set(f"{self.var.get()}, {', '.join(filenames)}")
         else:
-            filename_s = [askopenfilename(filetypes=filetypes)]  # to make next line
-        self.var.set(', '.join(filename_s))
+            filename = askopenfilename(filetypes=filetypes)
+            self.var.set(filename)
         self.app.synchronize()
 
     def _open_folder_dialog(self):
-        self.var.set(askdirectory(mustexist=self.argument.type.exists))
+        foldername = askdirectory(mustexist=self.argument.type.exists)
+        if self.argument.many is not False:  # append in case of many
+            self.var.set(f"{self.var.get()}, {foldername}")
+        else:
+            self.var.set(foldername)
         self.app.synchronize()
 
     def _get_dialog_value_widget(self, master, command, **kwargs):
@@ -392,7 +397,10 @@ class ArgApp(BaseFrame):
     def run(self):
         if self.synchronize():
             if self.target:
-                self.parser(self.target)
+                try:
+                    self.parser(self.target)
+                except Exception as e:
+                    messagebox.showerror("error", str(e))
             else:
                 messagebox.showerror('nothing to run', 'no runnable target was configured for this app')
 
@@ -413,15 +421,15 @@ class ArgApp(BaseFrame):
         filename = askopenfilename(defaultextension=".json")
         if filename:
             self.filename = filename
-        try:
-            self.parser = self.parser._load(self.filename)
-        except Exception as e:
-            messagebox.showerror("error loading file", f"message: {str(e)}\n\nprobable cause:\n"
-                                                       f"file is incompatible with the configuration of the parser")
-        else:
-            self.form.destroy()
-            self.form = FormFrame(self)
-            self.form.grid(row=0, column=0)
+            try:
+                self.parser = self.parser._load(self.filename)
+            except Exception as e:
+                messagebox.showerror("error loading file", f"message: {str(e)}\n\nprobable cause:\n"
+                                                           f"file is incompatible with the configuration of the parser")
+            else:
+                self.form.destroy()
+                self.form = FormFrame(self)
+                self.form.grid(row=0, column=0)
 
     def reset(self):
         for wrapper in self.form.wrappers:

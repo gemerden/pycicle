@@ -8,6 +8,8 @@ class FileFolderBase(str):
     def __new__(cls, string=''):
         if not string or (isinstance(string, str) and not string.strip()):
             return super().__new__(cls)
+        if ',' in string:
+            raise ValueError(f"file or folder '{string}' contains a ','")
         path = Path(string)
         if cls.exists and not cls.does_exist(path):
             raise ValueError(f"file: {str(path)} does not exist")
@@ -61,10 +63,10 @@ class ChoiceBase(object):
 
 
 def Choice(*choices):
-    """ """
+    """ note that the class of the choices becomes a base class"""
     if not len(choices):
         raise ValueError(f"cannot define Choice without choices")
-    if any(type(c) != type(choices[0]) for c in choices):
+    if any(type(c) is not type(choices[0]) for c in choices):
         raise ValueError(f"all choices must be of same class")
     return type('Choice', (ChoiceBase, type(choices[0])), {'choices': choices})
 
