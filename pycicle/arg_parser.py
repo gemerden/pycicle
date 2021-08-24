@@ -49,7 +49,7 @@ class Argument(object):
         self.name = name
         self.default = self.validate(self.default, _check_required=False)
         if self.novalue is not MISSING:
-            self.novalue = self.validate(self.default, _check_required=False)
+            self.novalue = self.validate(self.novalue, _check_required=False)
 
     def __get__(self, obj, cls=None):
         if obj is None:
@@ -112,7 +112,7 @@ class Argument(object):
             return '-' + self.name[0], '--' + self.name
 
     def add_to_parser(self, parser, seen):
-        args = self._get_name_or_flag(seen)
+        flags = self._get_name_or_flag(seen)
         kwargs = dict(type=self._decode,
                       default=self.default,
                       nargs=None,
@@ -134,8 +134,8 @@ class Argument(object):
                           const=self.novalue)
             kwargs.pop('type', None)
             kwargs.pop('nargs', None)
-        self.flags = () if self.positional else args
-        parser.add_argument(*args, **kwargs)
+        self.flags = () if self.positional else flags
+        parser.add_argument(*flags, **kwargs)
 
     def cmd_key(self, short=False):
         """ return string e.g. '--version', '-v'"""
