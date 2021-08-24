@@ -8,7 +8,7 @@ from functools import partial
 from typing import Mapping, Callable, Union, Any, Sequence, Iterable
 
 from pycicle import arg_app
-from pycicle.tools import get_stdout, Codec
+from pycicle.tools import get_stdout, Codec, MISSING
 from pycicle.parsers import parse_bool, encode_bool, encode_datetime, parse_datetime, encode_date, parse_date, \
     encode_time, parse_time, parse_timedelta, encode_timedelta
 
@@ -19,6 +19,7 @@ class Argument(object):
     many: Union[bool, int] = False
     positional: bool = False
     default: Any = None
+    novalue: Any = MISSING
     required: bool = False
     valid: Callable = None
     callback: Callable[[Any, Namespace], Any] = None
@@ -35,17 +36,20 @@ class Argument(object):
 
     reserved = {'help'}
 
-    help_template = "{name} {args}: \t\t\t{type}, \tdefault: {default}, \thelp: {help}"
-    nohelp_template = "{name} {args}: \t\t\t{type}, \tdefault: {default}"
+    help_template = "{name} {flags}: \t\t\t{type}, \tdefault: {default}, \thelp: {help}"
+    nohelp_template = "{name} {flags}: \t\t\t{type}, \tdefault: {default}"
 
     def __post_init__(self):
         encode, decode = self.type_codecs.get(self.type, (None, None))
         self._encode = encode or str
         self._decode = decode or self.type
+        self.flags = None
 
     def __set_name__(self, cls, name):
         self.name = name
-        self.default = self.validate(self.default, _default=True)
+        self.default = self.validate(self.default, _check_required=False)
+        if self.novalue is not MISSING:
+            self.novalue = self.validate(self.default, _check_required=False)
 
     def __get__(self, obj, cls=None):
         if obj is None:
@@ -56,6 +60,8 @@ class Argument(object):
             return self.default
 
     def __set__(self, obj, value):
+        if self.callback:
+            self.callback(value, obj)
         obj.__dict__[self.name] = self.validate(value)
 
     def __delete__(self, obj):
@@ -75,9 +81,9 @@ class Argument(object):
             return [self._decode(v) for v in value]
         return self._decode(value)
 
-    def validate(self, value, _default=False):
-        if value in (None, ""):
-            if not _default and self.required:
+    def validate(self, value, _check_required=True):
+        if value in (None, "", MISSING):
+            if _check_required and self.required:
                 raise ValueError(f"argument value '{self.name}' is required")
             return None
         if not isinstance(self.many, bool):
@@ -96,6 +102,7 @@ class Argument(object):
         if self.positional:
             if not all(arg.positional for arg in seen.values()):
                 raise ValueError(f"cannot place positional argument '{self.name}' after non-positional arguments")
+            return self.name,
         else:
             seen_shorts = set(a[0] for a in seen) | set(a[0] for a in self.reserved)
             if self.name[0] in seen_shorts:
@@ -103,7 +110,6 @@ class Argument(object):
                     raise ValueError(f"'-{self.name[0]}' already exist as a short argument name")
                 return '--' + self.name,
             return '-' + self.name[0], '--' + self.name
-        return self.name,
 
     def add_to_parser(self, parser, seen):
         args = self._get_name_or_flag(seen)
@@ -123,19 +129,21 @@ class Argument(object):
                 kwargs.update(nargs='?')
         else:
             kwargs.update(required=self.required)
-        if self.callback:
-            kwargs.update(action=partial(CallbackAction,
-                                         callback=self.callback))
-        self.args = () if self.positional else args
+        if self.novalue is not MISSING:
+            kwargs.update(action='store_const',
+                          const=self.novalue)
+            kwargs.pop('type', None)
+            kwargs.pop('nargs', None)
+        self.flags = () if self.positional else args
         parser.add_argument(*args, **kwargs)
 
     def cmd_key(self, short=False):
         """ return string e.g. '--version', '-v'"""
-        if len(self.args) == 0:
+        if len(self.flags) == 0:
             return ''
-        if len(self.args) == 1:
-            return self.args[0]
-        return self.args[0] if short else self.args[1]
+        if len(self.flags) == 1:
+            return self.flags[0]
+        return self.flags[0] if short else self.flags[1]
 
     def cmd_value(self, obj):
         value = self.__get__(obj)
@@ -168,16 +176,6 @@ class Argument(object):
 
     def __repr__(self):
         return super().__str__()
-
-
-class CallbackAction(Action):
-    def __init__(self, callback, **kwargs):
-        super().__init__(**kwargs)
-        self.callback = callback
-
-    def __call__(self, parser, namespace, values, option_string=None):
-        setattr(namespace, self.dest, values)
-        self.callback(values, namespace)
 
 
 class ArgParser(Mapping):
