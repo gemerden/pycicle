@@ -64,6 +64,25 @@ class TestArgParser(unittest.TestCase):
         assert parser.name == 'bob'
         assert parser.units == 3
 
+    def test_novalue(self):
+        class Parser(ArgParser):
+            name = Argument(str, default='bob', novalue='ann')
+            units = Argument(int, novalue=3)
+
+        parser = Parser('--units')
+
+        assert parser.name == 'bob'
+        assert parser.units == 3
+
+        parser = Parser('--name')
+
+        assert parser.name == 'ann'
+        assert parser.units is None
+
+        with self.assertRaises(RuntimeError):
+            class Parser(ArgParser):
+                name = Argument(int, novalue='ann')
+
     def test_datetime_types_and_defaults(self):
         from datetime import datetime, time, date, timedelta
 
