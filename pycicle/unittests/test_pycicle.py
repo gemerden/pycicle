@@ -1,64 +1,9 @@
 import os
 import unittest
-from itertools import product
 
 from pycicle import ArgParser, Argument
 from pycicle import File, Folder, Choice
-
-
-def yielder(arg):
-    try:
-        yield from arg
-    except TypeError:
-        yield arg
-
-
-def dict_product(**iterators):
-    iterators = {n: yielder(it) for n, it in iterators.items()}
-    names = list(iterators)
-    for values in product(*iterators.values()):
-        yield dict(zip(names, values))
-
-
-def make_test_command(parser_class, kwargs, short=False):
-    """ somewhat more limited then real function """
-
-    def create_value(arg, value):
-        if isinstance(value, (list, tuple)):
-            return ' '.join(arg._encode(v) for v in value)
-        return arg.encode(value)
-
-    cmd = ''
-    for name, value in kwargs.items():
-        arg = getattr(parser_class, name)
-        value = create_value(arg, value)
-        if arg.positional:
-            cmd = cmd + f" {value}"
-        else:
-            if short:
-                cmd = cmd + f" -{name[0]} {value}"  # can create doubles
-            else:
-                cmd = cmd + f" --{name} {value}"
-    return cmd.strip()
-
-
-def args_asserter(**expected):
-    def do_assert(**created):
-        if len(expected) != len(created):
-            raise AssertionError(f"incorrect number of arguments: {len(created)} != {len(expected)}")
-        for name, value in expected.items():
-            if value != created[name]:
-                raise AssertionError(f"incorrect value for '{name}': {created[name]} != {value}")
-
-    return do_assert
-
-
-def assert_product(parser_class, **iterators):
-    for kwargs in dict_product(**iterators):
-        asserter = args_asserter(**kwargs)
-        test_cmd = make_test_command(parser_class, kwargs)
-        parser = parser_class(test_cmd, target=asserter)
-        assert test_cmd == parser._command()
+from pycicle.unittests.testing_tools import dict_product, make_test_command, args_asserter, assert_product
 
 
 class TestArgParser(unittest.TestCase):
@@ -78,7 +23,7 @@ class TestArgParser(unittest.TestCase):
             required = Argument(int, required=True)
             valid = Argument(int, valid=lambda v: v < 10)
             many = Argument(int, many=True)
-            with_callback = Argument(int, callback=lambda v, n: callback_target.extend([v, n]))
+            with_callback = Argument(int, callback=lambda v, ns: callback_target.extend([v, ns]))
 
         asserter = args_asserter(pos=1, default=0, required=3, valid=4, many=[1, 2], with_callback=5)
 
@@ -108,6 +53,26 @@ class TestArgParser(unittest.TestCase):
                     Parser(cmd, target=asserter)
             else:
                 Parser(cmd, target=asserter)
+
+    def test_default(self):
+        class Parser(ArgParser):
+            name = Argument(str)
+            units = Argument(int, default=3)
+
+        parser = Parser('-n bob')
+
+        assert parser.name == 'bob'
+        assert parser.units == 3
+
+    def test_novalue(self):
+        class Parser(ArgParser):
+            name = Argument(str)
+            units = Argument(int, novalue=3)
+
+        parser = Parser('-n bob --units')
+
+        assert parser.name == 'bob'
+        assert parser.units == 3
 
     def test_datetime_types_and_defaults(self):
         from datetime import datetime, time, date, timedelta
@@ -167,12 +132,12 @@ class TestArgParser(unittest.TestCase):
 
     def test_positional_ordering(self):
         """ check whether positional arguments after non-positional arguments raise errors """
-        class Parser(ArgParser):  # must be OK
+        class Parser1(ArgParser):  # must be OK
             one = Argument(int, positional=True)
             two = Argument(int, positional=False)
 
         with self.assertRaises(ValueError):
-            class Parser(ArgParser):
+            class Parser2(ArgParser):
                 one = Argument(int, positional=False)
                 two = Argument(int, positional=True)
 
@@ -186,6 +151,9 @@ class TestArgParser(unittest.TestCase):
         parser = Parser({'one': 1})
 
         assert parser.extra == 1
+
+    def test_command_line(self):
+        pass
 
 
 
