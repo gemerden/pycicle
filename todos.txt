@@ -7,3 +7,4 @@
  - many files append in Entry line OK
  - check command line version of file paths (for linux) TEST
  - check running from command line
+ - comma in many file field
