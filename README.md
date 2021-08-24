@@ -68,23 +68,23 @@ Allowing the user to configure the server with help and validation, run the serv
 To configure the command line options (and corresponding GUI) an object oriented approach is used. When creating a new parser, you inherit from the base class `ArgParser` and define arguments with the descriptor `Argument` (more about descriptors [here](https://docs.python.org/3/howto/descriptor.html#descriptor-protocol)):
 
 ```python
-# somefile.py
+# prog.py
 from pycicle import ArgParser, Argument
 
 class MyParser(ArgParser):
-    my_argument = Argument(int, help='my new command line argument')
+    arg = Argument(int, help='my new command line argument')
 ```
 
 From the command line the underlying program can be run with:
 
 ```
-> python somefile.py --my_argument 3
+> python prog.py --arg 3
 ```
 
 or 
 
 ```
-> python somefile.py -m 3
+> python prog.py -a 3
 ```
 
 
@@ -92,8 +92,8 @@ or
 The easiest way to define the script to be started this way is to initialize the parser with a target:
 
 ```python
-def printer(my_argument):
-    print(my_argument)
+def printer(arg):
+    print(arg)
     
 parser = MyParser(target=printer)  # use the keyword 'target'
 ```
@@ -105,13 +105,14 @@ parser = MyParser(target=printer)  # use the keyword 'target'
 Arguments can be configured with a number of options. Only `type` is required:
 
 - `type`: The type of the argument as used by the target. This can be `int, str, bool, float, datetime, date, time, timedelta`, but there are a few more (described below) and it is possible to create your own types,
-- `required` (default=False): whether a value is required on the command line. If the `default` is `None` and no value for the argument is specified, this will raise an exception,
+- `required` (default=False): whether a value is required on the command line. If `required=True`, the `default` is `None` and no value for the argument is specified, this will raise an exception,
 - `many` (default=False): whether one, a specific number or any number of values are expected, so:
   - `many=False` means there is a single value expected,
   - `many=True` means that any number of values is expected. They will be turned into a list,
   - `many=N` (with `N` a positive integer) means that there are exactly n values expected, resulting in a list, even if `N` is 1,
   - Note: the `type` above applies to the individual elements of the list,
 - `default` (default=None): a default value for the argument. It must be of type `type` or `None` (the default for the default ;-). This value will be used if no other value is given on the command line,
+- `novalue` (default=MISSING): if a value is given for `novalue`, this becomes the value used when there is a flag, but no value on the command line: e.g. `python prog.py --argname` (if the flag is not present at all, the default is used),
 - `positional` (default=False): whether the argument is positional, meaning it can be used without name or flag (e.g. no `-m` or `--my_argument` before the value),
 - `valid` (default = None): an optional validator function for the argument value, allowing extra validation over the the typecheck based on `type`,
 - `callback` (default=None): an optional callback that takes the value and the underlying namespace created by the parser as arguments and, for example, allows you to modify the namespace. This namespace will be used by the target as arguments,
@@ -123,7 +124,8 @@ A fully configured Argument could look like this (but the defaults should keep m
 
 ```python
 class MyParser(ArgParser):
-    my_argument = Argument(int, required=True, many=True, default=[1, 2, 3], positional=False, 		                                    valid=lambda v: v[0] == 1, callback=lambda v, ns: print(ns),
+    my_argument = Argument(int, required=True, many=True, default=[1, 2, 3], novalue=[1],
+                           positional=False,  valid=lambda v: v[0] == 1, callback=lambda v, ns: print(ns),
                            help='this is a pretty random argument')
 ```
 
