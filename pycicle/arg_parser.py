@@ -35,13 +35,14 @@ class Argument(object):
 
     reserved = {'help'}
 
-    help_template = "{name} {args}: \t\t\t{type}, \tdefault: {default}, \thelp: {help}"
-    nohelp_template = "{name} {args}: \t\t\t{type}, \tdefault: {default}"
+    help_template = "{name} {flags}: \t\t\t{type}, \tdefault: {default}, \thelp: {help}"
+    nohelp_template = "{name} {flags}: \t\t\t{type}, \tdefault: {default}"
 
     def __post_init__(self):
         encode, decode = self.type_codecs.get(self.type, (None, None))
         self._encode = encode or str
         self._decode = decode or self.type
+        self.flags = None
 
     def __set_name__(self, cls, name):
         self.name = name
@@ -126,16 +127,16 @@ class Argument(object):
         if self.callback:
             kwargs.update(action=partial(CallbackAction,
                                          callback=self.callback))
-        self.args = () if self.positional else args
+        self.flags = () if self.positional else args
         parser.add_argument(*args, **kwargs)
 
     def cmd_key(self, short=False):
         """ return string e.g. '--version', '-v'"""
-        if len(self.args) == 0:
+        if len(self.flags) == 0:
             return ''
-        if len(self.args) == 1:
-            return self.args[0]
-        return self.args[0] if short else self.args[1]
+        if len(self.flags) == 1:
+            return self.flags[0]
+        return self.flags[0] if short else self.flags[1]
 
     def cmd_value(self, obj):
         value = self.__get__(obj)
