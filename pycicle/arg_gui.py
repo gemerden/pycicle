@@ -4,6 +4,7 @@ from tkinter import messagebox, ttk
 from tkinter.filedialog import asksaveasfilename, askopenfilename, askdirectory, askopenfilenames
 
 from pycicle.basetypes import FileBase, FolderBase, ChoiceBase
+from pycicle.tools import MISSING
 
 
 def many_column_string(arg):
@@ -101,7 +102,7 @@ class TkArgWrapper(object):
     def __init__(self, app, argument):
         self.app = app
         self.argument = argument
-        self.var = None
+        self.variable = None
         self.factory = {bool: self._get_boolean_value_widget,
                         FileBase: self._get_file_value_widget,
                         FolderBase: self._get_folder_value_widget,
@@ -117,7 +118,14 @@ class TkArgWrapper(object):
         return result
 
     def sync_value(self, event=None):
-        value = self.var.get().strip(', ')
+        if self.argument.novalue is not MISSING:
+            if self.variable.get():
+                setattr(self.app.parser, self.argument.name, self.argument.novalue)
+            else:
+                setattr(self.app.parser, self.argument.name, self.argument.default)
+            return True
+
+        value = self.variable.get().strip(', ')
         try:
             if self.argument.many is not False:
                 value = [v.strip() for v in value.split(',') if v.strip()]
@@ -136,7 +144,7 @@ class TkArgWrapper(object):
     def reset_value(self):
         delattr(self.app.parser,
                 self.argument.name)
-        self.var.set(self.get_value())
+        self.variable.set(self.get_value())
 
     def create_widget(self, master, name, **kwargs):
         if name == 'value':
@@ -161,6 +169,9 @@ class TkArgWrapper(object):
         return button
 
     def _get_widget_getter(self):
+        if self.argument.novalue is not MISSING:
+            return self._get_novalue_widget
+
         for cls, widget_getter in self.factory.items():
             if issubclass(self.argument.type, cls):
                 return widget_getter
@@ -177,8 +188,8 @@ class TkArgWrapper(object):
         return create_widget(master, **kwargs)
 
     def _get_string_value_widget(self, master, **kwargs):
-        self.var = tk.StringVar(value=self.get_value())
-        widget = tk.Entry(master, textvariable=self.var, **kwargs)
+        self.variable = tk.StringVar(value=self.get_value())
+        widget = tk.Entry(master, textvariable=self.variable, **kwargs)
         widget.bind('<KeyRelease>', self.app.synchronize)
         return widget
 
@@ -186,24 +197,43 @@ class TkArgWrapper(object):
         filetypes = [('', '.' + ext) for ext in self.argument.type.extensions]
         if self.argument.many is not False:  # append in case of many
             filenames = askopenfilenames(filetypes=filetypes)
-            self.var.set(f"{self.var.get()}, {', '.join(filenames)}")
+            self.variable.set(f"{self.variable.get()}, {', '.join(filenames)}")
         else:
             filename = askopenfilename(filetypes=filetypes)
-            self.var.set(filename)
+            self.variable.set(filename)
         self.app.synchronize()
 
     def _open_folder_dialog(self):
         foldername = askdirectory(mustexist=self.argument.type.exists)
         if self.argument.many is not False:  # append in case of many
-            self.var.set(f"{self.var.get()}, {foldername}")
+            self.variable.set(f"{self.variable.get()}, {foldername}")
         else:
-            self.var.set(foldername)
+            self.variable.set(foldername)
         self.app.synchronize()
+
+    def _get_novalue_widget(self, master, **kwargs):
+        self.variable = tk.BooleanVar(value=False)
+        widget = tk.Frame(master)
+        field = tk.Text(widget, height=1, **kwargs)
+        field.pack(side=tk.LEFT, fill=tk.X)
+
+        def sync(sync_all=True):
+            if sync_all:
+                self.app.synchronize()
+            field.config(state=tk.NORMAL)
+            field.delete('1.0', tk.END)
+            field.insert(tk.END, self.get_value())
+            field.config(state=tk.DISABLED)
+
+        sync(sync_all=False)
+        check = tk.Checkbutton(widget, variable=self.variable, command=sync)
+        check.pack(side=tk.RIGHT, padx=(4, 0))
+        return widget
 
     def _get_dialog_value_widget(self, master, command, **kwargs):
         widget = tk.Frame(master=master)
 
-        entry_field = tk.Entry(widget, textvariable=self.var, **kwargs)
+        entry_field = tk.Entry(widget, textvariable=self.variable, **kwargs)
         entry_field.bind('<KeyRelease>', self.app.synchronize)
         entry_field.pack(side=tk.LEFT, fill=tk.X)
 
@@ -212,24 +242,24 @@ class TkArgWrapper(object):
         return widget
 
     def _get_file_value_widget(self, master, **kwargs):
-        self.var = tk.StringVar(value=self.get_value())
+        self.variable = tk.StringVar(value=self.get_value())
         return self._get_dialog_value_widget(master, command=self._open_file_dialog, **kwargs)
 
     def _get_folder_value_widget(self, master, **kwargs):
-        self.var = tk.StringVar(value=self.get_value())
+        self.variable = tk.StringVar(value=self.get_value())
         return self._get_dialog_value_widget(master, command=self._open_folder_dialog, **kwargs)
 
     def _get_base_choice_value_widget(self, master, values, **kwargs):
         def on_select(event):
-            self.var.set(widget.get())
+            self.variable.set(widget.get())
             self.app.synchronize()
 
         if 'state' not in kwargs:
             kwargs['state'] = "readonly"
-        self.var = tk.StringVar(value=self.get_value())
+        self.variable = tk.StringVar(value=self.get_value())
         start_values = [] if self.argument.required else ['']
         widget = ttk.Combobox(master, values=start_values + values)
-        widget.config(textvariable=self.var, **kwargs)
+        widget.config(textvariable=self.variable, **kwargs)
         widget.bind("<<ComboboxSelected>>", on_select)
         return widget
 
@@ -246,9 +276,9 @@ class TkArgWrapper(object):
         return self._get_base_choice_value_widget(master, values=['no', 'yes'], **kwargs)
 
     def _get_multi_choice_value_widget(self, master, **kwargs):
-        self.var = tk.StringVar(value=self.get_value())
+        self.variable = tk.StringVar(value=self.get_value())
         choices = list(self.argument.type.choices)
-        chosen_values = set(c.strip() for c in self.var.get().split(','))
+        chosen_values = set(c.strip() for c in self.variable.get().split(','))
         chosen = {choice: (choice in chosen_values) for choice in choices}
 
         def show():
@@ -256,7 +286,7 @@ class TkArgWrapper(object):
             y = self.app.winfo_rooty() - 90
             show_multi_choice_dialog(self.app.master, title=f"{self.argument.name}",
                                      chosen=chosen, xy=(x, y))
-            self.var.set(', '.join(choice for choice, boolean in chosen.items() if boolean))
+            self.variable.set(', '.join(choice for choice, boolean in chosen.items() if boolean))
             self.app.synchronize()
 
         return self._get_dialog_value_widget(master=master, command=show, **kwargs)
@@ -357,7 +387,7 @@ class ButtonBar(BaseFrame):
         return button
 
 
-class ArgApp(BaseFrame):
+class ArgGui(BaseFrame):
     icon_file = os.path.abspath(os.path.join(os.path.dirname(__file__), 'images/icon.png'))
 
     def __init__(self, parser, target):
