@@ -1,8 +1,10 @@
 import os
 import unittest
+from datetime import datetime, timedelta, date, time
 
 from pycicle import ArgParser, Argument
 from pycicle import File, Folder, Choice
+from pycicle.tools import MISSING
 from pycicle.unittests.testing_tools import dict_product, make_test_command, args_asserter, assert_product
 
 
@@ -141,6 +143,7 @@ class TestArgParser(unittest.TestCase):
 
     def test_positional_ordering(self):
         """ check whether positional arguments after non-positional arguments raise errors """
+
         class Parser1(ArgParser):  # must be OK
             one = Argument(int, positional=True)
             two = Argument(int, positional=False)
@@ -165,9 +168,95 @@ class TestArgParser(unittest.TestCase):
         pass
 
 
+class TestDescriptorConfig(unittest.TestCase):
 
+    def test_not_many_and_no_types(self):
+        for kwargs in dict_product(type=int, required=(False, True), many=False, default=(None, 0, 1),
+                                   novalue=(MISSING, None, 2, 3), positional=(False, True),
+                                   valid=(lambda v: v < 10, None)):
+            class Parser(ArgParser):
+                arg = Argument(**kwargs)
 
+    def test_many_and_no_types(self):
+        for kwargs in dict_product(type=int, required=(False, True), many=(True, 2), default=(None, [0, 1], [2, 3]),
+                                   novalue=(MISSING, None, [3, 4], [4, 5]), positional=(False, True),
+                                   valid=(lambda v: len(v) < 10, None)):
+            class Parser(ArgParser):
+                arg = Argument(**kwargs)
 
+    def test_not_many_and_types(self):
+        type_values = {bool: (False, True),
+                       int: (-1, 0, 1, 100),
+                       float: (-1.0, 0.0, 1.0, float('inf')),
+                       str: ('', 'a', ' a ab b  ', '\n \t a\nb \t\n '),
+                       datetime: (datetime(1999, 1, 2, 3, 4, 5),),
+                       timedelta: (timedelta(seconds=1000),),
+                       date: (date(1999, 3, 4),),
+                       time: (time(22, 4, 5),)}
 
-if __name__ == '__main__':
-    pass
+        for type, values in type_values.items():
+            for kwargs in dict_product(type=type, required=(False, True), many=False, default=(None,) + values,
+                                       novalue=(MISSING, None) + values, positional=(False, True),
+                                       valid=(lambda v: v <= max(values), None)):
+                class Parser(ArgParser):
+                    arg = Argument(**kwargs)
+
+    def test_many_and_types(self):
+        type_values = {bool: (False, True),
+                       int: (-1, 0, 1, 100),
+                       float: (-1.0, 0.0, 1.0, float('inf')),
+                       str: ('', 'a', ' a ab b  ', '\n \t a\nb \t\n '),
+                       datetime: (datetime(1999, 1, 2, 3, 4, 5),),
+                       timedelta: (timedelta(seconds=1000),),
+                       date: (date(1999, 3, 4),),
+                       time: (time(22, 4, 5),)}
+
+        for type, values in type_values.items():
+            for kwargs in dict_product(type=type, required=(False, True), many=True, default=(None, values),
+                                       novalue=(MISSING, None, values), positional=(False, True),
+                                       valid=(lambda v: len(v) == len(values), None)):
+                class Parser(ArgParser):
+                    arg = Argument(**kwargs)
+
+    def test_validation(self):
+        """ very basic but a lot of combinations, mainly aiming for default and novalue validation """
+        type_values = {bool: (False, True, []),
+                       int: (-1, 0, 1, 100, []),
+                       float: (-1.0, 0.0, 1.0, float('inf'), []),
+                       str: ('', 'a', ' ab ', ' a ab b  ', '\n \t a\nb \t\n ', []),
+                       datetime: (datetime(1999, 1, 2, 3, 4, 5), []),
+                       timedelta: (timedelta(seconds=1000), []),
+                       date: (date(1999, 3, 4), []),
+                       time: (time(22, 4, 5), [])}
+
+        for type, values in type_values.items():
+            for kwargs in dict_product(type=type, required=(False, True), many=False, default=values,
+                                       novalue=(MISSING, None) + values, positional=(False, True),
+                                       valid=lambda v: v < min(values)):
+                with self.assertRaises((ValueError, RuntimeError)):
+                    class Parser(ArgParser):
+                        arg = Argument(**kwargs)
+
+        for type, values in type_values.items():
+            for kwargs in dict_product(type=type, required=(False, True), many=False, default=None,
+                                       novalue=values, positional=(False, True),
+                                       valid=lambda v: v < min(values)):
+                with self.assertRaises((ValueError, RuntimeError)):
+                    class Parser(ArgParser):
+                        arg = Argument(**kwargs)
+
+        for type, values in type_values.items():
+            for kwargs in dict_product(type=type, required=(False, True), many=True, default=[values],
+                                       novalue=[values], positional=(False, True),
+                                       valid=lambda v: len(v) < 0):
+                with self.assertRaises((ValueError, RuntimeError)):
+                    class Parser(ArgParser):
+                        arg = Argument(**kwargs)
+
+        for type, values in type_values.items():
+            for kwargs in dict_product(type=type, required=(False, True), many=True, default=None,
+                                       novalue=[values], positional=(False, True),
+                                       valid=lambda v: len(v) < 0):
+                with self.assertRaises((ValueError, RuntimeError)):
+                    class Parser(ArgParser):
+                        arg = Argument(**kwargs)
