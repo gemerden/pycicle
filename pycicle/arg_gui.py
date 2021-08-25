@@ -91,12 +91,14 @@ class FittingText(tk.Text):
 
 
 class TkArgWrapper(object):
+    """
+    'translation' class between parser arguments and the gui; e.g. responsible for creating widgets for different types
+    and argument configurations.
+    """
     strings = {
-        'name': lambda self, arg: '*' + arg.name if arg.required else arg.name,
-        'value': lambda self, arg: str(self.get_value()),
-        'type': lambda self, arg: arg.type.__name__,
-        'many': lambda self, arg: many_column_string(arg),
-        'help': lambda self, arg: arg.help,
+        'name': lambda arg: '*' + arg.name if arg.required else arg.name,
+        'type': lambda arg: arg.type.__name__,
+        'many': lambda arg: many_column_string(arg),
     }
 
     def __init__(self, app, argument):
@@ -108,43 +110,48 @@ class TkArgWrapper(object):
                         FolderBase: self._get_folder_value_widget,
                         ChoiceBase: self._get_choice_value_widget}
         self.widget = None  # reference for validation update
+        self.error = None
 
     def get_value(self):
         value = getattr(self.app.parser,
                         self.argument.name)
         result = self.argument.encode(value)
-        if self.argument.many is not False:
+        if self.argument.many is not False:  # many can be bool or int
             return ', '.join(result)
         return result
 
     def sync_value(self, event=None):
         if self.argument.novalue is not MISSING:
             if self.variable.get():
-                setattr(self.app.parser, self.argument.name, self.argument.novalue)
+                value = self.argument.novalue
             else:
-                setattr(self.app.parser, self.argument.name, self.argument.default)
-            return True
-
-        value = self.variable.get().strip(', ')
-        try:
+                value = self.argument.default
+        else:
+            value = self.variable.get().strip(', ')
             if self.argument.many is not False:
                 value = [v.strip() for v in value.split(',') if v.strip()]
+        try:
             setattr(self.app.parser, self.argument.name, value)
         except Exception as e:  # to also catch TclError, ArgumentTypeError
             self.widget.config(highlightthickness=1,
                                highlightbackground="red",
                                highlightcolor="red")
+            self.error = str(e)
             return False
         else:
-            # ttk widgets do not have 'highlightthickness', but cannot accept invalid values
+            # ttk widgets do not have 'highlightthickness', but comboboxes cannot accept invalid values
             if not isinstance(self.widget, ttk.Combobox):
                 self.widget.config(highlightthickness=0)
+            self.error = None
             return True
 
     def reset_value(self):
         delattr(self.app.parser,
                 self.argument.name)
-        self.variable.set(self.get_value())
+        if self.argument.novalue is not MISSING:
+            self.variable.set(False)
+        else:
+            self.variable.set(self.get_value())
 
     def create_widget(self, master, name, **kwargs):
         if name == 'value':
@@ -152,7 +159,7 @@ class TkArgWrapper(object):
             return self.widget
         if name == 'help':
             return self._get_help_widget(master, **kwargs)
-        return tk.Label(master, text=self._get_string(name), **kwargs)
+        return tk.Label(master, text=self.strings[name](self.argument), **kwargs)
 
     def _get_help_widget(self, master, **kwargs):
         if not self.argument.help.strip():
@@ -168,24 +175,13 @@ class TkArgWrapper(object):
         button = tk.Button(master, text='?', width=3, command=show, **kwargs)
         return button
 
-    def _get_widget_getter(self):
+    def _get_value_widget(self, master, **kwargs):
         if self.argument.novalue is not MISSING:
-            return self._get_novalue_widget
-
+            return self._get_novalue_widget(master, **kwargs)
         for cls, widget_getter in self.factory.items():
             if issubclass(self.argument.type, cls):
-                return widget_getter
-        return self._get_string_value_widget
-
-    def _get_string(self, name):
-        try:
-            return self.strings[name](self, self.argument)
-        except KeyError:
-            raise AttributeError(f"no string for column '{name}'")
-
-    def _get_value_widget(self, master, **kwargs):
-        create_widget = self._get_widget_getter()
-        return create_widget(master, **kwargs)
+                return widget_getter(master, **kwargs)
+        return self._get_string_value_widget(master, **kwargs)
 
     def _get_string_value_widget(self, master, **kwargs):
         self.variable = tk.StringVar(value=self.get_value())
@@ -216,6 +212,8 @@ class TkArgWrapper(object):
         widget = tk.Frame(master)
         field = tk.Text(widget, height=1, **kwargs)
         field.pack(side=tk.LEFT, fill=tk.X)
+        label = tk.Label(widget, text='include:')
+        label.pack(side=tk.LEFT)
 
         def sync(sync_all=True):
             if sync_all:
@@ -422,7 +420,7 @@ class ArgGui(BaseFrame):
         return success
 
     def command(self, short):
-        return self.parser._command(short, _no_prog=False)
+        return self.parser._command(short, prog=True)
 
     def run(self):
         if self.synchronize():
