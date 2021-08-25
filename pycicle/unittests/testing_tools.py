@@ -2,6 +2,8 @@ from itertools import product
 
 
 def yielder(arg):
+    if isinstance(arg, str):
+        yield arg
     try:
         yield from arg
     except TypeError:
@@ -54,3 +56,7 @@ def assert_product(parser_class, **iterators):
         test_cmd = make_test_command(parser_class, kwargs)
         parser = parser_class(test_cmd, target=asserter)
         assert test_cmd == parser._command()
+
+
+if __name__ == '__main__':
+    print(list(dict_product(a=1, b=(2, 3))))
