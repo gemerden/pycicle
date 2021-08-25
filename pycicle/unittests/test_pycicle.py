@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, date, time
 
 from pycicle import ArgParser, Argument
 from pycicle import File, Folder, Choice
+from pycicle.arg_parser import ConfigError
 from pycicle.tools import MISSING
 from pycicle.unittests.testing_tools import dict_product, make_test_command, args_asserter, assert_product
 
@@ -81,7 +82,7 @@ class TestArgParser(unittest.TestCase):
         assert parser.name == 'ann'
         assert parser.units is None
 
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(ValueError):
             class Parser(ArgParser):
                 name = Argument(int, novalue='ann')
 
@@ -169,20 +170,25 @@ class TestArgParser(unittest.TestCase):
 
 
 class TestDescriptorConfig(unittest.TestCase):
+    @classmethod
+    def illegal(cls, kwargs):
+        return kwargs['positional'] and kwargs['novalue'] is not MISSING
 
     def test_not_many_and_no_types(self):
         for kwargs in dict_product(type=int, required=(False, True), many=False, default=(None, 0, 1),
                                    novalue=(MISSING, None, 2, 3), positional=(False, True),
                                    valid=(lambda v: v < 10, None)):
-            class Parser(ArgParser):
-                arg = Argument(**kwargs)
+            if not self.illegal(kwargs):
+                class Parser(ArgParser):
+                    arg = Argument(**kwargs)
 
     def test_many_and_no_types(self):
         for kwargs in dict_product(type=int, required=(False, True), many=(True, 2), default=(None, [0, 1], [2, 3]),
                                    novalue=(MISSING, None, [3, 4], [4, 5]), positional=(False, True),
                                    valid=(lambda v: len(v) < 10, None)):
-            class Parser(ArgParser):
-                arg = Argument(**kwargs)
+            if not self.illegal(kwargs):
+                class Parser(ArgParser):
+                    arg = Argument(**kwargs)
 
     def test_not_many_and_types(self):
         type_values = {bool: (False, True),
@@ -198,8 +204,9 @@ class TestDescriptorConfig(unittest.TestCase):
             for kwargs in dict_product(type=type, required=(False, True), many=False, default=(None,) + values,
                                        novalue=(MISSING, None) + values, positional=(False, True),
                                        valid=(lambda v: v <= max(values), None)):
-                class Parser(ArgParser):
-                    arg = Argument(**kwargs)
+                if not self.illegal(kwargs):
+                    class Parser(ArgParser):
+                        arg = Argument(**kwargs)
 
     def test_many_and_types(self):
         type_values = {bool: (False, True),
@@ -215,8 +222,9 @@ class TestDescriptorConfig(unittest.TestCase):
             for kwargs in dict_product(type=type, required=(False, True), many=True, default=(None, values),
                                        novalue=(MISSING, None, values), positional=(False, True),
                                        valid=(lambda v: len(v) == len(values), None)):
-                class Parser(ArgParser):
-                    arg = Argument(**kwargs)
+                if not self.illegal(kwargs):
+                    class Parser(ArgParser):
+                        arg = Argument(**kwargs)
 
     def test_validation(self):
         """ very basic but a lot of combinations, mainly aiming for default and novalue validation """
@@ -233,7 +241,7 @@ class TestDescriptorConfig(unittest.TestCase):
             for kwargs in dict_product(type=type, required=(False, True), many=False, default=values,
                                        novalue=(MISSING, None) + values, positional=(False, True),
                                        valid=lambda v: v < min(values)):
-                with self.assertRaises((ValueError, RuntimeError)):
+                with self.assertRaises(ConfigError):
                     class Parser(ArgParser):
                         arg = Argument(**kwargs)
 
@@ -241,7 +249,7 @@ class TestDescriptorConfig(unittest.TestCase):
             for kwargs in dict_product(type=type, required=(False, True), many=False, default=None,
                                        novalue=values, positional=(False, True),
                                        valid=lambda v: v < min(values)):
-                with self.assertRaises((ValueError, RuntimeError)):
+                with self.assertRaises(ConfigError):
                     class Parser(ArgParser):
                         arg = Argument(**kwargs)
 
@@ -249,7 +257,7 @@ class TestDescriptorConfig(unittest.TestCase):
             for kwargs in dict_product(type=type, required=(False, True), many=True, default=[values],
                                        novalue=[values], positional=(False, True),
                                        valid=lambda v: len(v) < 0):
-                with self.assertRaises((ValueError, RuntimeError)):
+                with self.assertRaises(ConfigError):
                     class Parser(ArgParser):
                         arg = Argument(**kwargs)
 
@@ -257,6 +265,6 @@ class TestDescriptorConfig(unittest.TestCase):
             for kwargs in dict_product(type=type, required=(False, True), many=True, default=None,
                                        novalue=[values], positional=(False, True),
                                        valid=lambda v: len(v) < 0):
-                with self.assertRaises((ValueError, RuntimeError)):
+                with self.assertRaises(ConfigError):
                     class Parser(ArgParser):
                         arg = Argument(**kwargs)
