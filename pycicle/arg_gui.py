@@ -60,10 +60,6 @@ def show_multi_choice_dialog(win, title, chosen, xy, wh=None):
     dialog.grab_set()
     chosen_vars = {choice: tk.BooleanVar(value=boolean) for choice, boolean in chosen.items()}
 
-    def on_ok():
-        chosen.update({choice: var.get() for choice, var in chosen_vars.items()})
-        dialog.destroy()
-
     def get_button(choice):
         return tk.Checkbutton(dialog, variable=chosen_vars[choice])
 
@@ -73,6 +69,10 @@ def show_multi_choice_dialog(win, title, chosen, xy, wh=None):
     for row, choice in enumerate(chosen):
         get_button(choice).grid(row=row, column=0, padx=(5, 0))
         get_label(choice).grid(row=row, column=1, sticky=tk.W)
+
+    def on_ok():
+        chosen.update({choice: var.get() for choice, var in chosen_vars.items()})
+        dialog.destroy()
 
     ok_button = tk.Button(dialog, text='OK', command=on_ok, width=6)
     ok_button.grid(row=len(chosen), column=1, padx=4, pady=5)
