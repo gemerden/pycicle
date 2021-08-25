@@ -75,17 +75,21 @@ class Argument(object):
         return self._encode(value)
 
     def decode(self, value):
-        if value == '':
+        if self.type is not str and value == '':
             return None
         if self.many:
             return [self._decode(v) for v in value]
         return self._decode(value)
 
     def validate(self, value, _check_required=True):
-        if value in (None, "", MISSING):
+        if value is None or value is MISSING:
             if _check_required and self.required:
                 raise ValueError(f"argument value '{self.name}' is required")
-            return None
+            return value
+        if self.many is not False:
+            if not isinstance(value, (list, tuple)):
+                raise ValueError(f"argument value for '{self.name}' is not a list or tuple")
+            value = list(value)
         if not isinstance(self.many, bool):
             if len(value) != self.many:
                 raise ValueError(f"argument value for '{self.name}' is not of correct length {self.many}")
@@ -174,8 +178,8 @@ class Argument(object):
             return self.help_template.format(**{n: get_name(v) for n, v in self.__dict__.items()})
         return self.nohelp_template.format(**{n: get_name(v) for n, v in self.__dict__.items()})
 
-    def __repr__(self):
-        return super().__str__()
+    # def __repr__(self):
+    #     return super().__str__()
 
 
 class ArgParser(Mapping):
