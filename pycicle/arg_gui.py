@@ -4,6 +4,7 @@ from tkinter import messagebox, ttk
 from tkinter.filedialog import asksaveasfilename, askopenfilename, askdirectory, askopenfilenames
 
 from pycicle.basetypes import FileBase, FolderBase, ChoiceBase
+from pycicle.templating import get_parser_help, get_argument_help
 from pycicle.tools import MISSING
 
 
@@ -26,10 +27,10 @@ def _get_dialog(win, title, xy, wh=None):
 
 
 def show_text_dialog(win, title, text, wh, xy):
-    dialog = _get_dialog(win, title, wh, xy)
+    dialog = _get_dialog(win, title, wh=wh, xy=xy)
     dialog.config(bg="white")
     widget = tk.Text(dialog, bg="white", font=('Helvetica', 10, 'normal'))
-    widget.pack(expand=True, fill=tk.BOTH)
+    widget.pack(expand=True, fill=tk.BOTH, padx=10, pady=10)
     widget.insert(tk.END, text)
     widget.config(state=tk.DISABLED)
 
@@ -110,6 +111,7 @@ class TkArgWrapper(object):
                         FolderBase: self._get_folder_value_widget,
                         ChoiceBase: self._get_choice_value_widget}
         self.widget = None  # reference for validation update
+        self.help_button = None
         self.error = None
 
     def get_value(self):
@@ -136,12 +138,14 @@ class TkArgWrapper(object):
             self.widget.config(highlightthickness=1,
                                highlightbackground="red",
                                highlightcolor="red")
+            self.help_button.config(fg='red')
             self.error = str(e)
             return False
         else:
             # ttk widgets do not have 'highlightthickness', but comboboxes cannot accept invalid values
             if not isinstance(self.widget, ttk.Combobox):
                 self.widget.config(highlightthickness=0)
+            self.help_button.config(fg='black')
             self.error = None
             return True
 
@@ -162,18 +166,17 @@ class TkArgWrapper(object):
         return tk.Label(master, text=self.strings[name](self.argument), **kwargs)
 
     def _get_help_widget(self, master, **kwargs):
-        if not self.argument.help.strip():
-            return tk.Label(master)
 
         def show():
-            w, h = (320, 120)
-            x = button.winfo_rootx() + button.winfo_width() + 5
-            y = button.winfo_rooty() - h - 30
+            w, h = (600, 300)
+            x = self.help_button.winfo_rootx() + self.help_button.winfo_width() + 5
+            y = self.help_button.winfo_rooty() - h - 30
+            help_text = get_argument_help(self.argument, error=self.error)
             show_text_dialog(self.app.master, title=f"help: {self.argument.name}",
-                             text=self.argument.help, wh=(w, h), xy=(x, y))
+                             text=help_text, wh=(w, h), xy=(x, y))
 
-        button = tk.Button(master, text='?', width=3, command=show, **kwargs)
-        return button
+        self.help_button = tk.Button(master, text='?', width=3, command=show, **kwargs)
+        return self.help_button
 
     def _get_value_widget(self, master, **kwargs):
         if self.argument.novalue is not MISSING:
@@ -200,7 +203,7 @@ class TkArgWrapper(object):
         self.app.synchronize()
 
     def _open_folder_dialog(self):
-        foldername = askdirectory(mustexist=self.argument.type.exists)
+        foldername = askdirectory(mustexist=self.argument.type.existing)
         if self.argument.many is not False:  # append in case of many
             self.variable.set(f"{self.variable.get()}, {foldername}")
         else:
@@ -464,7 +467,7 @@ class ArgGui(BaseFrame):
             wrapper.reset_value()
 
     def help(self):
-        help_text = type(self.parser).__doc__ or ""
+        help_text = get_parser_help(type(self.parser))
         x = self.winfo_rootx() + self.winfo_width() + 20
         y = self.winfo_rooty() - 36
         show_text_dialog(self.master, 'help', help_text, wh=(640, 640), xy=(x, y))

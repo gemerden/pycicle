@@ -2,8 +2,12 @@ from pathlib import Path
 
 
 class FileFolderBase(str):
-    exists = False
+    existing = False
     does_exist = None
+
+    @classmethod
+    def string(cls):
+        raise NotImplementedError
 
     def __new__(cls, string=''):
         if not string or (isinstance(string, str) and not string.strip()):
@@ -11,7 +15,7 @@ class FileFolderBase(str):
         if ',' in string:
             raise ValueError(f"file or folder '{string}' contains a ','")
         path = Path(string)
-        if cls.exists and not cls.does_exist(path):
+        if cls.existing and not cls.does_exist(path):
             raise ValueError(f"file: {str(path)} does not exist")
         return super().__new__(cls, path)
 
@@ -30,6 +34,10 @@ class FileBase(FileFolderBase):
             extensions.add(ext)
         cls.extensions = frozenset(extensions)
 
+    @classmethod
+    def string(cls):
+        return f"File({', '.join(cls.extensions)}, existing={cls.existing})"
+
     def __new__(cls, string=''):
         _, _, ext = string.rpartition('.')
         if cls.extensions and ext not in cls.extensions:
@@ -40,17 +48,25 @@ class FileBase(FileFolderBase):
 class FolderBase(FileFolderBase):
     does_exist = Path.is_dir
 
+    @classmethod
+    def string(cls):
+        return f"Folder(existing={cls.existing})"
 
-def File(*extensions, exists=False):
-    return type('File', (FileBase,), dict(exists=exists, extensions=extensions))
+
+def File(*extensions, existing=False):
+    return type('File', (FileBase,), dict(existing=existing, extensions=extensions))
 
 
-def Folder(exists=False):
-    return type('Folder', (FolderBase,), dict(exists=exists))
+def Folder(existing=False):
+    return type('Folder', (FolderBase,), dict(existing=existing))
 
 
 class ChoiceBase(object):
     choices = ()
+
+    @classmethod
+    def string(cls):
+        return f"Choice({', '.join(map(str, cls.choices))})"
 
     def __new__(cls, value=None):
         if value is None:

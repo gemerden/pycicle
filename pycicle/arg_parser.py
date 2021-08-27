@@ -39,9 +39,6 @@ class Argument(object):
 
     reserved = {'help'}
 
-    help_template = "{name} {flags}: \t\t\t{type}, \tdefault: {default}, \thelp: {help}"
-    nohelp_template = "{name} {flags}: \t\t\t{type}, \tdefault: {default}"
-
     def __post_init__(self):
         encode, decode = self.type_codecs.get(self.type, (None, None))
         self._encode = encode or str
@@ -128,7 +125,7 @@ class Argument(object):
                 if len(self.name) == 1:
                     raise ConfigError(f"'-{self.name[0]}' already exist as a short argument name")
                 return '--' + self.name,
-            return '-' + self.name[0], '--' + self.name
+            return '--' + self.name, '-' + self.name[0]
 
     def add_to_parser(self, parser, seen):
         flags = self._get_name_or_flag(seen)
@@ -191,22 +188,23 @@ class Argument(object):
             return None
         return self.encode(value)
 
+    def to_string_dict(self, names=None):
+        def string(item):
+            try:
+                return item.__name__
+            except AttributeError:
+                return str(item)
+
+        if names is None:
+            names = list(self.__dict__)
+        return {name: string(getattr(self, name)) for name in names}
+
     def check_required(self, obj):
         value = self.__get__(obj)
         if self.required and value is None and self.default is not None:
             return False
         return True
 
-    def __str__(self):
-        def get_name(arg):
-            try:
-                return arg.__name__
-            except AttributeError:
-                return str(arg)
-
-        if self.help.strip():
-            return self.help_template.format(**{n: get_name(v) for n, v in self.__dict__.items()})
-        return self.nohelp_template.format(**{n: get_name(v) for n, v in self.__dict__.items()})
 
 
 class ArgParser(Mapping):
@@ -214,24 +212,7 @@ class ArgParser(Mapping):
     _arg_parser = None  # set in __init_subclass__
     _arguments = None  # set in __init_subclass__
 
-    _reserved = {'help'}  # -h, --help is already used by argparse
-
-    _template = \
-        """
-        {title}
-        _________________________________________________________________________________
-        {original}
-        
-        Definitions:
-        _________________________________________________________________________________
-        {definitions}
-        
-        
-        Command Line:
-        _________________________________________________________________________________
-        
-        {parser_help}
-        """
+    _reserved = {'help'}  # -h, --help is already used by argparse itself
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -242,7 +223,6 @@ class ArgParser(Mapping):
             arg.add_to_parser(cls._arg_parser, seen)
             seen[arg.name] = arg
         cls._arg_names = frozenset(seen)
-        cls._extend_doc()
 
     @classmethod
     def _get_arguments(cls):
@@ -264,18 +244,11 @@ class ArgParser(Mapping):
         return f"{line_end}{line_end.join(map(str, cls._arguments))}"
 
     @classmethod
-    def _parser_help(cls):
+    def _cmd_help(cls):
         with get_stdout() as cmd_help:
             cls._arg_parser.print_help()
         lines = [l.strip() for l in cmd_help().split('\n')]
         return '\n\t'.join(lines)
-
-    @classmethod
-    def _extend_doc(cls):
-        cls.__doc__ = cls._template.format(title=cls.__name__,
-                                           original=cls.__doc__,
-                                           definitions=cls._get_def_string(),
-                                           parser_help=cls._parser_help())
 
     @classmethod
     def _as_value_dict(cls, json_dict):
