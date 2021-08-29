@@ -1,38 +1,7 @@
 import inspect
 
+from pycicle.document import Chapter, ItemList, Document
 from pycicle.tools import MISSING
-
-_arg_help_template = \
-"""
-name: {name}
-{help}
-
-Options:
-{definition}
-{error}
-"""
-
-_parser_help_template = \
-"""
-{title}
-{upper_line}
-{class_doc}
-
-Arguments:
-{upper_line}
-{definitions}
-
-* = required
-
-Command Line:
-{upper_line}
-{parser_help}
-"""
-
-upper_line = 120 * chr(8254)
-
-
-_arg_def_template = "{name}{flags}: {type}{count}{default}{novalue}{valid}{help}"
 
 
 def get_name(item):
@@ -46,8 +15,6 @@ def get_name(item):
 
 
 def name_str(arg):
-    if arg.required:
-        return f"*{arg.name}"
     return arg.name
 
 
@@ -59,8 +26,8 @@ def flag_str(arg):
 
 def type_str(arg):
     if arg.many:
-        return f"type: [{get_name(arg.type)}]"
-    return 'type: ' + get_name(arg.type)
+        return f"[{get_name(arg.type)}]"
+    return get_name(arg.type)
 
 
 def req_str(arg):
@@ -70,19 +37,19 @@ def req_str(arg):
 def count_str(arg):
     if isinstance(arg.many, bool):
         return ''
-    return ' count: ' + str(arg.many)
+    return str(arg.many)
 
 
 def default_str(arg):
     if arg.default is None:
         return ''
-    return ' default: ' + arg.encode(arg.default)
+    return arg.encode(arg.default)
 
 
 def novalue_str(arg):
     if arg.novalue is MISSING:
         return ''
-    return ' novalue: ' + arg.encode(arg.novalue)
+    return arg.encode(arg.novalue)
 
 
 def _func_str(func):
@@ -99,13 +66,7 @@ def _func_str(func):
 def valid_str(arg):
     if not arg.valid:
         return ''
-    return ' valid: '+_func_str(arg.valid)
-
-
-def help_str(arg):
-    if not arg.help.strip():
-        return ''
-    return ' help: ' + arg.help
+    return _func_str(arg.valid)
 
 
 str_funcs = dict(
@@ -113,31 +74,33 @@ str_funcs = dict(
     name=name_str,
     type=type_str,
     count=count_str,
+    required=req_str,
     default=default_str,
     novalue=novalue_str,
     valid=valid_str,
-    help=help_str,
 )
 
 
-def _get_arg_def(arg):
-    str_dict = {name: func(arg) for name, func in str_funcs.items()}
-    return _arg_def_template.format(**str_dict)
-
-
 def get_parser_help(parser_class):
-    sep = '\n   '
-    definitions = '   ' + sep.join(map(_get_arg_def, parser_class._arguments))
-    return _parser_help_template.format(title=parser_class.__name__,
-                                        class_doc=parser_class.__doc__.strip(),
-                                        definitions=definitions,
-                                        parser_help=parser_class._cmd_help(),
-                                        upper_line=upper_line)
+    option_help = ItemList(intro='help for the options',
+                           items={arg.name: arg.help for arg in parser_class._arguments if arg.help},
+                           extra='more help can be found under the help buttons next to the options')
+    command_help = 'command line definition:\n\n' +parser_class._cmd_help()
+    chapters = [Chapter('Option Help', content=option_help('-'))(),
+                Chapter('Command Line', content=command_help)()]
+    document = Document(title=parser_class.__name__,
+                        intro=parser_class.__doc__.strip(),
+                        chapters=chapters)
+    return document()
 
 
-def get_argument_help(argument, error):
-    error_line = f"\nError: {error}" if error else ''
-    return _arg_help_template.format(name=argument.name,
-                                     help=argument.help,
-                                     error=error_line,
-                                     definition=_get_arg_def(argument))
+def get_argument_help(arg, error):
+    arg_specs= ItemList(items={name: func(arg) for name, func in str_funcs.items()})
+    chapters = [Chapter('Help', content=arg.help)(),
+                Chapter('Specifications', content=arg_specs(''))()]
+    if error:
+        chapters.append(Chapter('Error', content=str(error))())
+    document = Document(title=f"Option: {arg.name}",
+                        intro=f"Specifications for '{arg.name}':",
+                        chapters=chapters)
+    return document()
