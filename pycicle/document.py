@@ -48,8 +48,8 @@ class ItemList(BaseString):
 
     def _item_strings(self, bullets):
         if isinstance(self.items, dict):
-            return [f" {b} {k}:\t{it}" for b, (k, it) in zip(bullets, self.items.items()) if it is not '']
-        return [f" {b} {it}" for b, it in zip(bullets, self.items) if it is not '']
+            return [f" {b} {k}:\t{it}" for b, (k, it) in zip(bullets, self.items.items()) if it != '']
+        return [f" {b} {it}" for b, it in zip(bullets, self.items) if it != '']
 
     def __call__(self, start=1):
         if isinstance(start, str):
