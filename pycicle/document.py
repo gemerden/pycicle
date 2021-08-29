@@ -11,18 +11,19 @@ class BaseString(object):
 
 
 class Document(BaseString):
-    template = "{title}\n{line}\n{intro}\n\n{chapters}\n"
+    template = "\n{title}\n{line}\n{intro}\n\n{chapters}\n"
 
     def __init__(self, title, intro, chapters):
         self.title = title
         self.intro = intro
         self.chapters = chapters
 
-    def __call__(self, line=underline):
-        return self.template.format(title=self.title,
-                                    line=line,
-                                    intro=self.intro,
-                                    chapters='\n'.join(self.chapters))
+    def __call__(self, start='   ', line=underline):
+        document = self.template.format(title=self.title,
+                                        line=line,
+                                        intro=self.intro,
+                                        chapters='\n'.join(self.chapters))
+        return '\n'.join(start + line for line in document.split('\n'))
 
 
 class Chapter(BaseString):
