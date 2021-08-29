@@ -1,6 +1,7 @@
 import itertools
 
-underline = 120 * chr(8254)
+long_line = 120 * chr(8254)
+short_line = 80 * chr(8254)
 
 
 class BaseString(object):
@@ -11,32 +12,32 @@ class BaseString(object):
 
 
 class Document(BaseString):
-    template = "\n{title}\n{line}\n{intro}\n\n{chapters}\n"
+    template = "\n{title}\n{separator}\n{intro}\n\n{chapters}\n"
 
     def __init__(self, title, intro, chapters):
         self.title = title
         self.intro = intro
         self.chapters = chapters
 
-    def __call__(self, start='   ', line=underline):
+    def __call__(self, start='   ', separator=long_line):
         document = self.template.format(title=self.title,
-                                        line=line,
+                                        separator=separator,
                                         intro=self.intro,
                                         chapters='\n'.join(self.chapters))
         return '\n'.join(start + line for line in document.split('\n'))
 
 
 class Chapter(BaseString):
-    template = "{name}\n{line}\n{content}\n"
+    template = "{name}\n{separator}\n{content}\n"
 
     def __init__(self, name, content):
         self.name = name
         self.content = content
 
-    def __call__(self, line=underline):
+    def __call__(self, separator=long_line):
         if self.content == '':
             return ''
-        return self.template.format(name=self.name, line=line, content=self.content)
+        return self.template.format(name=self.name, separator=separator, content=self.content)
 
 
 class ItemList(BaseString):
@@ -48,9 +49,14 @@ class ItemList(BaseString):
         self.extra = extra
 
     def _item_strings(self, bullets):
+        if isinstance(self.items, dict):  # filter out empties before to not have gaps in numbered bullets
+            items = [(k, it) for k, it in self.items.items() if it != '']
+        else:
+            items = [it for it in self.items if it != '']
+
         if isinstance(self.items, dict):
-            return [f" {b} {k}:\t{it}" for b, (k, it) in zip(bullets, self.items.items()) if it != '']
-        return [f" {b} {it}" for b, it in zip(bullets, self.items) if it != '']
+            return [f" {b} {k}:\t{it}" for b, (k, it) in zip(bullets, items)]
+        return [f" {b} {it}" for b, it in zip(bullets, items)]
 
     def __call__(self, start=1):
         if isinstance(start, str):

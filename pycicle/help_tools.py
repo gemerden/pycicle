@@ -81,26 +81,25 @@ str_funcs = dict(
 )
 
 
-def get_parser_help(parser_class, **kwargs):
-    option_help = ItemList(intro='Help for the options',
-                           items={arg.name: arg.help for arg in parser_class._arguments if arg.help},
-                           extra='more help can be found under the help buttons next to the options')
-    command_help = 'command line definition:\n\n' +parser_class._cmd_help()
-    chapters = [Chapter('Option Help', content=option_help('-'))(),
-                Chapter('Command Line', content=command_help)()]
-    document = Document(title=parser_class.__name__,
-                        intro=parser_class.__doc__.strip(),
+def get_parser_help(parser, **kwargs):
+    option_help = ItemList(items={arg.name: arg.help for arg in parser._arguments if arg.help},
+                           extra='\nMore help can be found under the help buttons next to the options.')
+    command_help = f"current: {parser._command(prog=True)}\n\n{parser._cmd_help()}"
+    chapters = [Chapter('Option Help', content=option_help('-'))(**kwargs),
+                Chapter('Command Line', content=command_help)(**kwargs)]
+    document = Document(title=type(parser).__name__,
+                        intro=type(parser).__doc__.strip(),
                         chapters=chapters)
     return document(**kwargs)
 
 
-def get_argument_help(argument, error, **kwargs):
+def get_argument_help(argument, error=None, **kwargs):
     arg_specs= ItemList(items={name: func(argument) for name, func in str_funcs.items()})
-    chapters = [Chapter('Help', content=argument.help)(),
-                Chapter('Specifications', content=arg_specs(''))()]
+    chapters = [Chapter('Help', content=argument.help)(**kwargs),
+                Chapter('Specifications', content=arg_specs(''))(**kwargs)]
     if error:
-        chapters.append(Chapter('Error', content=str(error))())
+        chapters.append(Chapter('ERROR', content=str(error))(**kwargs))
     document = Document(title=f"Option: {argument.name}",
-                        intro=f"Specifications for '{argument.name}':",
+                        intro=f"details of '{argument.name}'",
                         chapters=chapters)
     return document(**kwargs)

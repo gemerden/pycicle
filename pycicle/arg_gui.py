@@ -4,7 +4,8 @@ from tkinter import messagebox, ttk
 from tkinter.filedialog import asksaveasfilename, askopenfilename, askdirectory, askopenfilenames
 
 from pycicle.basetypes import FileBase, FolderBase, ChoiceBase
-from pycicle.templating import get_parser_help, get_argument_help
+from pycicle.document import short_line
+from pycicle.help_tools import get_parser_help, get_argument_help
 from pycicle.tools import MISSING
 
 
@@ -168,10 +169,10 @@ class TkArgWrapper(object):
     def _get_help_widget(self, master, **kwargs):
 
         def show():
-            w, h = (600, 300)
+            w, h = (480, 360)
             x = self.help_button.winfo_rootx() + self.help_button.winfo_width() + 5
             y = self.help_button.winfo_rooty() - h - 30
-            help_text = get_argument_help(self.argument, error=self.error)
+            help_text = get_argument_help(self.argument, error=self.error, separator=short_line)
             show_text_dialog(self.app.master, title=f"help: {self.argument.name}",
                              text=help_text, wh=(w, h), xy=(x, y))
 
@@ -467,7 +468,7 @@ class ArgGui(BaseFrame):
             wrapper.reset_value()
 
     def help(self):
-        help_text = get_parser_help(type(self.parser))
+        help_text = get_parser_help(self.parser)
         x = self.winfo_rootx() + self.winfo_width() + 20
         y = self.winfo_rooty() - 36
         show_text_dialog(self.master, 'help', help_text, wh=(640, 640), xy=(x, y))

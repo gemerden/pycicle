@@ -93,20 +93,20 @@ class Argument(object):
         exception_class = ConfigError if _config else ValueError
         if value is None or value is MISSING:
             if not _config and self.required:
-                raise ValueError(f"argument value '{self.name}' is required")
+                raise ValueError(f"Argument value '{self.name}' is required")
             return value
         if self.many is not False:
             if not isinstance(value, (list, tuple)):
-                raise exception_class(f"argument value for '{self.name}' is not a list or tuple")
+                raise exception_class(f"Argument value for '{self.name}' is not a list or tuple")
             value = list(value)
         if not isinstance(self.many, bool):
             if len(value) != self.many:
-                raise exception_class(f"argument value for '{self.name}' is not of correct length {self.many}")
+                raise exception_class(f"Argument value for '{self.name}' is not of length {self.many}")
         try:
             if isinstance(value, str) or (self.many is not False and all(isinstance(v, str) for v in value)):
                 value = self.decode(value)
             if value is not None and self.valid and not self.valid(value):
-                raise exception_class(f"invalid value for argument '{self.name}'")
+                raise exception_class(f"Invalid value: {self.encode(value)} for argument '{self.name}'")
         except TypeError as e:
             raise exception_class(str(e))
         return value
@@ -162,7 +162,7 @@ class Argument(object):
             return ''
         if len(self.flags) == 1:
             return self.flags[0]
-        return self.flags[0] if short else self.flags[1]
+        return self.flags[1] if short else self.flags[0]
 
     def _cmd_value(self, value):
         if self.many:
