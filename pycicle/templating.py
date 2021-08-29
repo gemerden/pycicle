@@ -1,7 +1,7 @@
 import inspect
 
-from pycicle.document import Chapter, ItemList, Document
 from pycicle.tools import MISSING
+from pycicle.document import Document, Chapter, ItemList
 
 
 def get_name(item):
@@ -81,8 +81,8 @@ str_funcs = dict(
 )
 
 
-def get_parser_help(parser_class):
-    option_help = ItemList(intro='help for the options',
+def get_parser_help(parser_class, **kwargs):
+    option_help = ItemList(intro='Help for the options',
                            items={arg.name: arg.help for arg in parser_class._arguments if arg.help},
                            extra='more help can be found under the help buttons next to the options')
     command_help = 'command line definition:\n\n' +parser_class._cmd_help()
@@ -91,16 +91,16 @@ def get_parser_help(parser_class):
     document = Document(title=parser_class.__name__,
                         intro=parser_class.__doc__.strip(),
                         chapters=chapters)
-    return document()
+    return document(**kwargs)
 
 
-def get_argument_help(arg, error):
-    arg_specs= ItemList(items={name: func(arg) for name, func in str_funcs.items()})
-    chapters = [Chapter('Help', content=arg.help)(),
+def get_argument_help(argument, error, **kwargs):
+    arg_specs= ItemList(items={name: func(argument) for name, func in str_funcs.items()})
+    chapters = [Chapter('Help', content=argument.help)(),
                 Chapter('Specifications', content=arg_specs(''))()]
     if error:
         chapters.append(Chapter('Error', content=str(error))())
-    document = Document(title=f"Option: {arg.name}",
-                        intro=f"Specifications for '{arg.name}':",
+    document = Document(title=f"Option: {argument.name}",
+                        intro=f"Specifications for '{argument.name}':",
                         chapters=chapters)
-    return document()
+    return document(**kwargs)
