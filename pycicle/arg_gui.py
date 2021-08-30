@@ -1,6 +1,6 @@
 import os.path
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import ttk
 from tkinter.filedialog import asksaveasfilename, askopenfilename, askdirectory, askopenfilenames
 
 from pycicle.basetypes import FileBase, FolderBase, ChoiceBase
@@ -46,7 +46,7 @@ class BaseFrame(tk.Frame):
     def __init__(self, master=None, **kwargs):
         super().__init__(master)
         self.master = master
-        self._init(**kwargs)  # before create widgets
+        self._init(**kwargs)  # before create_widgets
         self.create_widgets()
 
     def _init(self, **kwargs):
@@ -133,6 +133,7 @@ class TkArgWrapper(object):
             value = self.variable.get().strip(', ')
             if self.argument.many is not False:
                 value = [v.strip() for v in value.split(',') if v.strip()]
+
         try:
             setattr(self.app.parser, self.argument.name, value)
         except Exception as e:  # to also catch TclError, ArgumentTypeError
@@ -297,7 +298,7 @@ class TkArgWrapper(object):
 # ==================================================================
 
 class FormFrame(BaseFrame):
-    col_names = ('name', 'value', 'type', 'many', 'help')
+    column_names = ('name', 'value', 'type', 'many', 'help')
 
     column_grid_kwargs = {'name': {'sticky': tk.E},  # overrides grid_kwargs
                           'value': {'sticky': tk.EW},
@@ -326,11 +327,11 @@ class FormFrame(BaseFrame):
         super().destroy()
 
     def create_widgets(self):
-        for i, col_name in enumerate(self.col_names):
+        for i, col_name in enumerate(self.column_names):
             self._create_widget(col_name).grid(row=0, column=i,
                                                **self._get_grid_kwargs(col_name))
         for i, wrapper in enumerate(self.wrappers):
-            for j, col_name in enumerate(self.col_names):
+            for j, col_name in enumerate(self.column_names):
                 self._create_widget(col_name, wrapper).grid(row=i + 1, column=j,
                                                             **self._get_grid_kwargs(col_name))
         self._create_command_bar()
@@ -372,7 +373,7 @@ class ButtonBar(BaseFrame):
     )
 
     grid_kwargs = {'padx': 2, 'pady': 2}
-    butt_kwargs = {'width': 6, 'font': ('Helvetica', 10, 'normal')}
+    button_kwargs = {'width': 6, 'font': ('Helvetica', 10, 'normal')}
 
     def create_widgets(self):
         self.buttons = []
@@ -381,7 +382,7 @@ class ButtonBar(BaseFrame):
         self.config(padx=5, pady=5)
 
     def get_button(self, name, config):
-        kwargs = self.butt_kwargs.copy()
+        kwargs = self.button_kwargs.copy()
         kwargs.update(command=getattr(self.master, name))
         kwargs.update(config or {'text': name.replace('_', ' ')})
         button = tk.Button(master=self, **kwargs)
@@ -427,14 +428,13 @@ class ArgGui(BaseFrame):
         return self.parser._command(short, prog=True)
 
     def run(self):
+        if self.target is None:
+            tk.messagebox.showinfo('nothing to run', 'no runnable target was configured for this app')
         if self.synchronize():
-            if self.target:
-                try:
-                    self.parser(self.target)
-                except Exception as e:
-                    messagebox.showerror("error", str(e))
-            else:
-                messagebox.showerror('nothing to run', 'no runnable target was configured for this app')
+            try:
+                self.parser(self.target)
+            except Exception as e:
+                tk.messagebox.showerror("error", str(e))
 
     def save(self):
         if self.synchronize():
@@ -456,8 +456,9 @@ class ArgGui(BaseFrame):
             try:
                 self.parser = self.parser._load(self.filename)
             except Exception as e:
-                messagebox.showerror("error loading file", f"message: {str(e)}\n\nprobable cause:\n"
-                                                           f"file is incompatible with the configuration of the parser")
+                tk.messagebox.showerror("error while loading file",
+                                     f"message: {str(e)}\n\nprobable cause:\n"
+                                     f"file is incompatible with the configuration of the parser")
             else:
                 self.form.destroy()
                 self.form = FormFrame(self)

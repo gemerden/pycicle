@@ -206,7 +206,6 @@ class Argument(object):
         return True
 
 
-
 class ArgParser(Mapping):
     _parser_class = ArgumentParser
     _arg_parser = None  # set in __init_subclass__
@@ -269,7 +268,7 @@ class ArgParser(Mapping):
         else:
             self._init_parse(args)
             if target:
-                self(target)
+                self(target)  # uses the __call__ method
 
     def __len__(self) -> int:
         return len(self.__dict__)
@@ -288,7 +287,7 @@ class ArgParser(Mapping):
 
     def _init_parse(self, args):
         if args is None and "PYTEST_CURRENT_TEST" in os.environ:
-            args = sys.argv[2:]  # fix for running tests with pytest (extra cmd line arg)
+            args = sys.argv[2:]  # fix for running tests with pytest
         elif isinstance(args, Mapping):
             self._update(args)
             args = self._command()
