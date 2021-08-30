@@ -6,13 +6,13 @@
 This module has 2 main purposes:
 
 1. Simplify the configuration of command line options for your program*,
-2. Let users of your script start the program from a GUI instead of the command line.
+2. Let users of your script start the program from a auto-generated GUI instead of the command line.
 
 *compared to using `argparse` or `optparse` from the standard library.
 
 ## Installation
 
-PyCicle can be easily installed with pip installed with `pip install pycicle`.
+PyCicle can be easily installed with pip using `pip install pycicle`.
 
 ## Example
 
@@ -43,7 +43,7 @@ class StartServer(ArgParser):
                     help='port on which the server will run')
     restart = Argument(bool, default=True, required=True,
                        help='should the server restart after interruptions?')
-    debug = Argument(bool, default=False, required=True,
+    debug = Argument(bool, default=False, required=False,
                      help='run the server in debug mode')
     logfile = Argument(File('.log'), required=False, default=None,
                        help='logfile for the server, log to stdout if none')
@@ -100,7 +100,7 @@ parser = MyParser(target=printer)  # use the keyword 'target'
 
 
 
-#### Configuring Argument
+#### Configuring Arguments
 
 Arguments can be configured with a number of options. Only `type` is required:
 
@@ -110,11 +110,11 @@ Arguments can be configured with a number of options. Only `type` is required:
   - `many=False` means there is a single value expected,
   - `many=True` means that any number of values is expected. They will be turned into a list,
   - `many=N` (with `N` a positive integer) means that there are exactly n values expected, resulting in a list, even if `N` is 1,
-  - Note: the `type` above applies to the individual elements of the list,
+  - Note: the `type` option above applies to the individual elements of the list,
 - `default` (default=None): a default value for the argument. It must be of type `type` or `None` (the default for the default ;-). This value will be used if no other value is given on the command line,
-- `novalue` (default=MISSING): if a value is given for `novalue`, this becomes the value used when there is a flag, but no value on the command line: e.g. `python prog.py --argname` (if the flag is not present at all, the default is used),
-- `positional` (default=False): whether the argument is positional, meaning it can be used without name or flag (e.g. no `-m` or `--my_argument` before the value),
-- `valid` (default = None): an optional validator function for the argument value, allowing extra validation over the the typecheck based on `type`,
+- `novalue` (default=MISSING): if a value is given for `novalue`, this becomes the value used when the flag is present on the command line, but there is no value: e.g. `python prog.py --argname` (if the flag is not present, the default is used),
+- `positional` (default=False): whether the argument is positional, meaning it can be used without name or flag (e.g. no `-m` or `--my_argument` before the value). Positional argument must come before other arguments,
+- `valid` (default = None): an optional validator function for the argument value, allowing extra validation over the the typecheck based on `type`. A `None` value will not be validated,
 - `callback` (default=None): an optional callback that takes the value and the underlying namespace created by the parser as arguments and, for example, allows you to modify the namespace. This namespace will be used by the target as arguments,
 - `help`: (default=""): last but not least, a help string that will be shown when the user types `> python somefile.py -h` (or `--help`) and is show in the GUI via the `? ` buttons.
 
@@ -124,7 +124,7 @@ A fully configured Argument could look like this (but the defaults should keep m
 
 ```python
 class MyParser(ArgParser):
-    my_argument = Argument(int, required=True, many=True, default=[1, 2, 3], novalue=[1],
+    my_argument = Argument(int, required=True, many=True, default=[1, 2, 3], novalue=[1, 1, 1],
                            positional=False,  valid=lambda v: v[0] == 1, callback=lambda v, ns: print(ns),
                            help='this is a pretty random argument')
 ```
@@ -132,4 +132,22 @@ class MyParser(ArgParser):
 
 
 #### Initializing the Parser
+
+The parser constructor has three arguments:
+
+- `args` (default=None): the argument values to be parsed, `args` will be explained below,
+- `target` (default=None): the user callable to be called with the argument values when the parser is done, or when the 'run' button in the GUI is clicked. When there is no target, arguments are parsed (validated), but nothin is run,
+- `use_gui`(default=True): if `use_gui` is True, and the parser is started with no arguments (so `args=None`), the GUI is started for the user to fill in the command line options.
+
+The parser can get arguments in 2 ways: from the command line and in the python file where it is initialized. When the parser is initialized in the python file, there are 4 ways:
+
+1. With `args` is None (e.g. `parser = MyParser(target=my_target)`): In this case there are 2 options for the command line:
+   - With command line options (e.g. `> python start_server.py --host 10.0.0.127 --port 8080`) the parser will validate and run the target with the argument values, 
+   - Without command line options (e.g. `> python start_server.py`) the GUI will be started (unless `use_gui` is set to False, then it will try to validate and run with the default values),
+2. With `args`  being the command line arguments, as either a string or a list of strings. This will validate and run the target (if given) with these options. Examples:
+   - As string in the python file: `parser=MyParser('--host 10.0.0.127 --port 8080')`, same as:
+   - A list of strings in the python file: `parser=MyParser(['--host', '10.0.0.127', '-port', '8080'])`,
+3. With `args` a dictionary of command line option values, e.g. `parser=MyParser({'host': '10.0.0.127', 'port': '8080'})`. This will also validate and run the target. 
+
+Option 1 is intended for normal use. 2 and 3 are more for testing purposes.
 
