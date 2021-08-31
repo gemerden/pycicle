@@ -41,7 +41,7 @@ class FileBase(FileFolderBase):
     def __new__(cls, string=''):
         _, _, ext = string.rpartition('.')
         if cls.extensions and ext not in cls.extensions:
-            raise ValueError(f"incorrect extension for file: {string}")
+            raise ValueError(f"incorrect extension for file: {string}; should be one of {cls.extensions}")
         return super().__new__(cls, string)
 
 
