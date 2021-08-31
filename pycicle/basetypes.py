@@ -3,7 +3,7 @@ from pathlib import Path
 
 class FileFolderBase(str):
     existing = False
-    does_exist = None
+    does_exist = None  # function to test for existence, implemented in subclasses
 
     @classmethod
     def string(cls):
@@ -32,11 +32,13 @@ class FileBase(FileFolderBase):
             if ext.startswith('.'):
                 ext = ext[1:]
             extensions.add(ext)
-        cls.extensions = frozenset(extensions)
+        cls.extensions = tuple(extensions)
 
     @classmethod
     def string(cls):
-        return f"File({', '.join(cls.extensions)}, existing={cls.existing})"
+        if cls.extensions:
+            return f"File({', '.join(cls.extensions)}, existing={cls.existing})"
+        return f"File(existing={cls.existing})"
 
     def __new__(cls, string=''):
         _, _, ext = string.rpartition('.')
@@ -79,7 +81,7 @@ class ChoiceBase(object):
 
 
 def Choice(*choices):
-    """ note that the class of the choices becomes a base class"""
+    """ note that the class of the choices becomes a base class, e.g. issubclass(Choice(1,2,3), int) == True """
     if not len(choices):
         raise ValueError(f"cannot define Choice without choices")
     if any(type(c) is not type(choices[0]) for c in choices):
