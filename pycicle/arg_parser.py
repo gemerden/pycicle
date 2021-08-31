@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, date, time
 from typing import Mapping, Callable, Union, Any, Sequence, Iterable
 
 from pycicle import arg_gui
-from pycicle.tools import get_stdout, Codec, MISSING
+from pycicle.tools import get_stdout, MISSING
 from pycicle.parsers import parse_bool, encode_bool, encode_datetime, parse_datetime, encode_date, parse_date, \
     encode_time, parse_time, parse_timedelta, encode_timedelta
 
@@ -30,11 +30,11 @@ class Argument(object):
     name: Union[str, None] = None  # set in __set_name__
 
     type_codecs = {
-        bool: Codec(encode_bool, parse_bool),
-        datetime: Codec(encode_datetime, parse_datetime),
-        timedelta: Codec(encode_timedelta, parse_timedelta),
-        date: Codec(encode_date, parse_date),
-        time: Codec(encode_time, parse_time),
+        bool: (encode_bool, parse_bool),
+        datetime: (encode_datetime, parse_datetime),
+        timedelta: (encode_timedelta, parse_timedelta),
+        date: (encode_date, parse_date),
+        time: (encode_time, parse_time),
     }
 
     reserved = {'help'}
@@ -43,7 +43,7 @@ class Argument(object):
         encode, decode = self.type_codecs.get(self.type, (None, None))
         self._encode = encode or str
         self._decode = decode or self.type
-        self.flags = None
+        self.flags = None  # set in ArgParser.__init_subclass__
 
     def __set_name__(self, cls, name):
         self.name = name
@@ -69,10 +69,12 @@ class Argument(object):
         Called in __init_subclass__ of owner class because self.name must be set to give clearer error messages and
         python __set_name__ changes all exceptions to (somewhat vague) RuntimeError.
         """
+        if self.name.startswith('_'):
+            raise ConfigError(f"Argument name '{self.name}' cannot start with an '_' to prevent name conflicts")
         self.default = self.validate(self.default, _config=True)
         if self.novalue is not MISSING:
             if self.positional:
-                raise ConfigError(f"argument '{self.name}' is flag only and cannot be positional")
+                raise ConfigError(f"Argument '{self.name}' is flag only and cannot be positional")
             self.novalue = self.validate(self.novalue, _config=True)
 
     def encode(self, value):
@@ -88,6 +90,12 @@ class Argument(object):
         if self.many:
             return [self._decode(v) for v in value]
         return self._decode(value)
+
+    def encoded(self, obj):
+        return self.encode(self.__get__(obj))
+
+    def decoded(self, dct):
+        return self.decode(dct[self.name])
 
     def validate(self, value, _config=False):
         exception_class = ConfigError if _config else ValueError
@@ -106,18 +114,18 @@ class Argument(object):
             if isinstance(value, str) or (self.many is not False and all(isinstance(v, str) for v in value)):
                 value = self.decode(value)
             if value is not None and self.valid and not self.valid(value):
-                raise exception_class(f"Invalid value: {self.encode(value)} for argument '{self.name}'")
+                raise exception_class(f"Invalid value: {str(value)} for argument '{self.name}'")
         except TypeError as e:
             raise exception_class(str(e))
         return value
 
     def _get_name_or_flag(self, seen) -> tuple:
         if self.name in self.reserved:
-            raise ConfigError(f"argument name '{self.name}' is reserved")
+            raise ConfigError(f"Argument name '{self.name}' is reserved")
 
         if self.positional:
             if not all(arg.positional for arg in seen.values()):
-                raise ConfigError(f"cannot place positional argument '{self.name}' after non-positional arguments")
+                raise ConfigError(f"Cannot place positional argument '{self.name}' after non-positional arguments")
             return self.name,
         else:
             seen_shorts = set(a[0] for a in seen) | set(a[0] for a in self.reserved)
@@ -138,7 +146,7 @@ class Argument(object):
                 kwargs.update(nargs='+')
             else:
                 kwargs.update(nargs='*')
-        elif self.many is not False:
+        elif self.many is not False:  # not isinstance(self.many, int) since isinstance(False, int) == True
             kwargs.update(nargs=self.many)
         elif self.positional:
             if not self.required:
@@ -188,18 +196,7 @@ class Argument(object):
             return None
         return self.encode(value)
 
-    def to_string_dict(self, names=None):
-        def string(item):
-            try:
-                return item.__name__
-            except AttributeError:
-                return str(item)
-
-        if names is None:
-            names = list(self.__dict__)
-        return {name: string(getattr(self, name)) for name in names}
-
-    def check_required(self, obj):
+    def check(self, obj):
         value = self.__get__(obj)
         if self.required and value is None and self.default is not None:
             return False
@@ -217,11 +214,10 @@ class ArgParser(Mapping):
         super().__init_subclass__(**kwargs)
         cls._arg_parser = cls._parser_class(**kwargs)
         cls._arguments = cls._get_arguments()
-        seen = {}
+        seen = {}  # to prevent repeated short flags (like -u)
         for arg in cls._arguments:
             arg.add_to_parser(cls._arg_parser, seen)
             seen[arg.name] = arg
-        cls._arg_names = frozenset(seen)
 
     @classmethod
     def _get_arguments(cls):
@@ -229,35 +225,22 @@ class ArgParser(Mapping):
         for c in reversed(cls.__mro__):
             for name, arg in vars(c).items():
                 if isinstance(arg, Argument):
-                    arg.check_config()  # see comment in method
+                    arg.check_config()  # see comment in 'check_config'
                     arguments[arg.name] = arg
         return tuple(arguments.values())
 
     @classmethod
-    def _get_defaults(cls):
-        return {arg.name: arg.default for arg in cls._arguments}
-
-    @classmethod
-    def _get_def_string(cls):
-        line_end = '\n\t'
-        return f"{line_end}{line_end.join(map(str, cls._arguments))}"
-
-    @classmethod
     def _cmd_help(cls):
-        with get_stdout() as cmd_help:
+        with get_stdout() as stdout:
             cls._arg_parser.print_help()
-        lines = [l.strip() for l in cmd_help().split('\n')]
-        return '\n\t'.join(lines)
-
-    @classmethod
-    def _as_value_dict(cls, json_dict):
-        return {arg.name: arg.decode(json_dict[arg.name]) for arg in cls._arguments}
+        lines = [l.strip() for l in stdout().split('\n')]
+        return '\n'.join(lines)
 
     @classmethod
     def _load(cls, filename: str, mode: str = 'r'):
         with open(filename, mode) as f:
             json_dict = json.load(f)
-        return cls(cls._as_value_dict(json_dict))
+        return cls({arg.name: arg.decoded(json_dict) for arg in cls._arguments})
 
     def __init__(self,
                  args: Union[str, Sequence, Mapping, None] = None,
@@ -305,21 +288,12 @@ class ArgParser(Mapping):
             self._update(parsed.__dict__)
 
     def _update(self, kwargs):
-        new_kwargs = self._get_defaults()
+        new_kwargs = {arg.name: arg.default for arg in self._arguments}
         new_kwargs.update(self.__dict__)
         new_kwargs.update(kwargs)
         self.__dict__.clear()
         for name, value in new_kwargs.items():
             setattr(self, name, value)
-
-    def __call__(self, target: Callable) -> Any:
-        if not target:
-            raise ValueError(f"cannot call 'None' target")
-        for arg in self._arguments:
-            if not arg.check_required(self):
-                raise ValueError(f"missing required argument '{arg.name}'")
-        self._parse_command(self._command())
-        return target(**self)
 
     def _command(self, short=False, prog=False):
         cmds = [arg.cmd(self, short) for arg in self._arguments]
@@ -328,18 +302,19 @@ class ArgParser(Mapping):
             return f"{os.path.basename(sys.argv[0])} {arg_string}"
         return arg_string
 
-    def _as_json_dict(self):
-        return {arg.name: arg.encode(getattr(self, arg.name)) for arg in self._arguments}
+    def __call__(self, target: Callable) -> Any:
+        if target is None:
+            raise ValueError(f"cannot call 'None' target")
+        for arg in self._arguments:
+            if not arg.check(self):
+                raise ValueError(f"missing required argument '{arg.name}'")
+        self._parse_command(self._command())
+        return target(**self)
 
     def _save(self, filename: str, mode: str = 'w'):
+        json_dict = {arg.name: arg.encoded(self) for arg in self._arguments}
         with open(filename, mode) as f:
-            f.write(json.dumps(self._as_json_dict()))
-
-    def __str__(self) -> str:
-        return json.dumps(self.__dict__, indent=4)
-
-    def __repr__(self) -> str:
-        return json.dumps(self.__dict__, indent=4)
+            f.write(json.dumps(json_dict))
 
 
 if __name__ == '__main__':

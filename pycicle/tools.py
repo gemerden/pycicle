@@ -28,6 +28,3 @@ def get_stdout():
         sys.stdout.close()
         sys.stdout = backup
 
-
-Codec = namedtuple('Codec', ['encode', 'decode'])
-
