@@ -1,16 +1,15 @@
 import os
 import unittest
-from datetime import datetime, timedelta, date, time
+from datetime import date, datetime, time, timedelta
 
-from pycicle import ArgParser, Argument
-from pycicle import File, Folder, Choice
+from pycicle import ArgParser, Argument, Choice, File, Folder
 from pycicle.arg_parser import ConfigError
 from pycicle.tools import MISSING
 from pycicle.unittests.testing_tools import (
-    dict_product,
-    make_test_command,
     args_asserter,
     assert_product,
+    dict_product,
+    make_test_command,
 )
 
 
@@ -104,7 +103,7 @@ class TestArgParser(unittest.TestCase):
                 name = Argument(int, novalue="ann")
 
     def test_datetime_types_and_defaults(self):
-        from datetime import datetime, time, date, timedelta
+        from datetime import date, datetime, time, timedelta
 
         class Parser(ArgParser):
             datetime_ = Argument(datetime, default=datetime(1999, 6, 8, 12, 12, 12))

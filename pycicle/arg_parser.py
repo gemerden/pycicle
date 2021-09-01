@@ -3,23 +3,23 @@ import os
 import sys
 from argparse import ArgumentParser, Namespace
 from dataclasses import dataclass
-from datetime import datetime, timedelta, date, time
-from typing import Mapping, Callable, Union, Any, Sequence, Iterable
+from datetime import date, datetime, time, timedelta
+from typing import Any, Callable, Iterable, Mapping, Sequence, Union
 
 from pycicle import arg_gui
-from pycicle.tools import get_stdout, MISSING
 from pycicle.parsers import (
-    parse_bool,
     encode_bool,
-    encode_datetime,
-    parse_datetime,
     encode_date,
-    parse_date,
+    encode_datetime,
     encode_time,
+    encode_timedelta,
+    parse_bool,
+    parse_date,
+    parse_datetime,
     parse_time,
     parse_timedelta,
-    encode_timedelta,
 )
+from pycicle.tools import MISSING, get_stdout
 
 
 class ConfigError(ValueError):

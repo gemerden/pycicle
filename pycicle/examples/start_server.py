@@ -1,4 +1,4 @@
-from pycicle import ArgParser, Argument, File, Choice
+from pycicle import ArgParser, Argument, Choice, File
 
 
 def is_valid_host(ip):

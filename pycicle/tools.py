@@ -1,7 +1,7 @@
 import sys
 from collections import namedtuple
-from io import StringIO
 from contextlib import contextmanager
+from io import StringIO
 
 
 class Missing(object):

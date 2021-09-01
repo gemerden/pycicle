@@ -2,15 +2,15 @@ import os.path
 import tkinter as tk
 from tkinter import ttk
 from tkinter.filedialog import (
-    asksaveasfilename,
-    askopenfilename,
     askdirectory,
+    askopenfilename,
     askopenfilenames,
+    asksaveasfilename,
 )
 
-from pycicle.basetypes import FileBase, FolderBase, ChoiceBase
+from pycicle.basetypes import ChoiceBase, FileBase, FolderBase
 from pycicle.document import short_line
-from pycicle.help_tools import get_parser_help, get_argument_help
+from pycicle.help_tools import get_argument_help, get_parser_help
 from pycicle.tools import MISSING
 
 
