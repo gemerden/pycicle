@@ -9,10 +9,10 @@ class FileFolderBase(str):
     def string(cls):
         raise NotImplementedError
 
-    def __new__(cls, string=''):
+    def __new__(cls, string=""):
         if not string or (isinstance(string, str) and not string.strip()):
             return super().__new__(cls)
-        if ',' in string:
+        if "," in string:
             raise ValueError(f"file or folder '{string}' contains a ','")
         path = Path(string)
         if cls.existing and not cls.does_exist(path):
@@ -29,7 +29,7 @@ class FileBase(FileFolderBase):
         extensions = set()
         for ext in cls.extensions:
             ext = ext.strip()
-            if ext.startswith('.'):
+            if ext.startswith("."):
                 ext = ext[1:]
             extensions.add(ext)
         cls.extensions = tuple(extensions)
@@ -40,10 +40,12 @@ class FileBase(FileFolderBase):
             return f"File({', '.join(cls.extensions)}, existing={cls.existing})"
         return f"File(existing={cls.existing})"
 
-    def __new__(cls, string=''):
-        _, _, ext = string.rpartition('.')
+    def __new__(cls, string=""):
+        _, _, ext = string.rpartition(".")
         if cls.extensions and ext not in cls.extensions:
-            raise ValueError(f"incorrect extension for file: {string}; should be one of {cls.extensions}")
+            raise ValueError(
+                f"incorrect extension for file: {string}; should be one of {cls.extensions}"
+            )
         return super().__new__(cls, string)
 
 
@@ -56,11 +58,11 @@ class FolderBase(FileFolderBase):
 
 
 def File(*extensions, existing=False):
-    return type('File', (FileBase,), dict(existing=existing, extensions=extensions))
+    return type("File", (FileBase,), dict(existing=existing, extensions=extensions))
 
 
 def Folder(existing=False):
-    return type('Folder', (FolderBase,), dict(existing=existing))
+    return type("Folder", (FolderBase,), dict(existing=existing))
 
 
 class ChoiceBase(object):
@@ -81,20 +83,20 @@ class ChoiceBase(object):
 
 
 def Choice(*choices):
-    """ note that the class of the choices becomes a base class, e.g. issubclass(Choice(1,2,3), int) == True """
+    """note that the class of the choices becomes a base class, e.g. issubclass(Choice(1,2,3), int) == True"""
     if not len(choices):
         raise ValueError(f"cannot define Choice without choices")
     if any(type(c) is not type(choices[0]) for c in choices):
         raise ValueError(f"all choices must be of same class")
-    return type('Choice', (ChoiceBase, type(choices[0])), {'choices': choices})
+    return type("Choice", (ChoiceBase, type(choices[0])), {"choices": choices})
 
 
-if __name__ == '__main__':
-    file = File('.txt')
-    f = file('sample.txt')
+if __name__ == "__main__":
+    file = File(".txt")
+    f = file("sample.txt")
     print(isinstance(f, file))
 
-    choice = Choice('a', 'b', 'c')
-    c = choice('b')
+    choice = Choice("a", "b", "c")
+    c = choice("b")
     print(c, isinstance(c, choice))
-    c = choice('d')
+    c = choice("d")

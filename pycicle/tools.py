@@ -27,4 +27,3 @@ def get_stdout():
     finally:
         sys.stdout.close()
         sys.stdout = backup
-

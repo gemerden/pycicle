@@ -1,20 +1,22 @@
 from datetime import datetime, timedelta, time
 
 
-def parse_bool(arg,
-               true_set=frozenset(('yes', 'true', 't', 'y', '1')),
-               false_set=frozenset(('no', 'false', 'f', 'n', '0'))):
+def parse_bool(
+    arg,
+    true_set=frozenset(("yes", "true", "t", "y", "1")),
+    false_set=frozenset(("no", "false", "f", "n", "0")),
+):
     if isinstance(arg, (bool, int)):
         return bool(arg)
     if arg.strip().lower() in true_set:
         return True
     if arg.strip().lower() in false_set:
         return False
-    raise ValueError('Boolean value expected')
+    raise ValueError("Boolean value expected")
 
 
 def encode_bool(val):
-    return 'yes' if val else 'no'
+    return "yes" if val else "no"
 
 
 def encode_datetime(dt):
@@ -42,7 +44,7 @@ def parse_time(string):
 
 
 def parse_timedelta(string):
-    h, m, s = [s.strip() for s in string.split(':')]
+    h, m, s = [s.strip() for s in string.split(":")]
     return timedelta(hours=int(h), minutes=int(m), seconds=float(s))
 
 
@@ -54,7 +56,7 @@ def encode_timedelta(td):
     h = str(int(hours)).zfill(2)
     m = str(int(minutes)).zfill(2)
     s = str(int(seconds)).zfill(2)
-    p = str(secpart).split('.')[1]
+    p = str(secpart).split(".")[1]
     return f"{h}:{m}:{s}.{p}"
 
 
