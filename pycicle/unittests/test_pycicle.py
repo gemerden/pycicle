@@ -155,9 +155,20 @@ class TestArgParser(unittest.TestCase):
 
         assert_product(
             Parser,
-            one=(f"{self.root_folder}{self.path_seperator}does_not_exist.txt", f"..{self.path_seperator}unittests{self.path_seperator}does_not_exist.txt"),
-            two=(__file__, f"..{self.path_seperator}unittests{self.path_seperator}test_pycicle.py"),
-            three=([f"{self.root_folder}{self.path_seperator}does_not_exist.txt", f"..{self.path_seperator}unittests{self.path_seperator}does_not_exist.txt"],),
+            one=(
+                f"{self.root_folder}{self.path_seperator}does_not_exist.txt",
+                f"..{self.path_seperator}unittests{self.path_seperator}does_not_exist.txt",
+            ),
+            two=(
+                __file__,
+                f"..{self.path_seperator}unittests{self.path_seperator}test_pycicle.py",
+            ),
+            three=(
+                [
+                    f"{self.root_folder}{self.path_seperator}does_not_exist.txt",
+                    f"..{self.path_seperator}unittests{self.path_seperator}does_not_exist.txt",
+                ],
+            ),
         )
 
     def test_folders(self):
@@ -168,9 +179,17 @@ class TestArgParser(unittest.TestCase):
 
         assert_product(
             Parser,
-            one=(f"{self.root_folder}{self.path_seperator}does_not_exist", f"..{self.path_seperator}unittests{self.path_seperator}does_not_exist"),
+            one=(
+                f"{self.root_folder}{self.path_seperator}does_not_exist",
+                f"..{self.path_seperator}unittests{self.path_seperator}does_not_exist",
+            ),
             two=(os.path.dirname(__file__), f"..{self.path_seperator}unittests"),
-            three=([f"{self.root_folder}{self.path_seperator}does_not_exist", f"..{self.path_seperator}unittests{self.path_seperator}does_not_exist"],),
+            three=(
+                [
+                    f"{self.root_folder}{self.path_seperator}does_not_exist",
+                    f"..{self.path_seperator}unittests{self.path_seperator}does_not_exist",
+                ],
+            ),
         )
 
     def test_positional_ordering(self):
