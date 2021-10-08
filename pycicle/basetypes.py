@@ -2,7 +2,7 @@ from pathlib import Path
 
 
 class FileFolderBase(str):
-    existing = False
+    existing = False  # indicates whether file or folder is expected to exist
     does_exist = None  # function to test for existence, implemented in subclasses
 
     @classmethod
@@ -21,7 +21,7 @@ class FileFolderBase(str):
 
 
 class FileBase(FileFolderBase):
-    extensions = ()
+    extensions = ()  # allowed file extensions
     does_exist = Path.is_file
 
     def __init_subclass__(cls, **kwargs):
@@ -64,7 +64,7 @@ def Folder(existing=False):
 
 
 class ChoiceBase(object):
-    choices = ()
+    choices = ()  # defined in def Choice() below
 
     @classmethod
     def string(cls):
@@ -74,7 +74,7 @@ class ChoiceBase(object):
         if value is None:
             value = cls.choices[0]
         elif isinstance(value, str):
-            value = cls.__bases__[1](value)
+            value = cls.__bases__[1](value)  # convert to second baseclass == type of choices
         if value not in cls.choices:
             raise ValueError(f"value '{str(value)}' is not a choice in {cls.choices}")
         return super().__new__(cls, value)
@@ -85,7 +85,7 @@ def Choice(*choices):
     if not len(choices):
         raise ValueError(f"cannot define Choice without choices")
     if any(type(c) is not type(choices[0]) for c in choices):
-        raise ValueError(f"all choices must be of same class")
+        raise ValueError(f"all choices must be of same type")
     return type('Choice', (ChoiceBase, type(choices[0])), {'choices': choices})
 
 
