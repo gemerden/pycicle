@@ -467,6 +467,7 @@ class ArgGui(BaseFrame):
     def reset(self):
         for wrapper in self.form.wrappers:
             wrapper.reset_value()
+        self.synchronize()
 
     def help(self):
         help_text = get_parser_help(self.parser)
