@@ -16,6 +16,8 @@ class TestArgParser(unittest.TestCase):
             pass
 
         Parser('-h')
+        import subprocess
+        subprocess.run(['python', __file__, "-h"])
 
     def test_basic_keywords(self):
         callback_target = []
