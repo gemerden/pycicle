@@ -269,9 +269,9 @@ class ArgParser(Mapping):
     def _parse(self, args):
         if args is None:
             if "PYTEST_CURRENT_TEST" in os.environ:
-                args = sys.argv[2:]  # fix for running tests with pytest
+                args = sys.argv[1:]  # fix for running tests with pytest
             else:
-                args = sys.argv[1:]
+                args = sys.argv
         elif isinstance(args, Mapping):
             self._update(args)
             args = self._command()

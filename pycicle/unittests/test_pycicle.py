@@ -103,10 +103,9 @@ class TestArgParser(unittest.TestCase):
         test_cmd = make_test_command(Parser, defaults)
         parser = Parser(test_cmd,
                         target=asserter)
-        real_cmd = parser._command()
-        assert test_cmd == real_cmd
-        parser2 = Parser(run_gui=False,
-                         target=asserter)
+        assert test_cmd == parser._command()
+
+        parser2 = Parser('', target=asserter)  # TODO: check when args is None
         assert test_cmd == parser2._command()
 
     def test_bool(self):
