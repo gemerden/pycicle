@@ -1,3 +1,6 @@
+from pycicle.tools import MISSING
+
+
 def parse(cmd_line, arguments):
     def create_lookups(arguments):
         arg_lookup, kwarg_lookup = {}, {}
@@ -21,19 +24,19 @@ def parse(cmd_line, arguments):
         return cmd_line[:], []
 
     def parse_args(arg_list):
-        if len(arg_lookup) == 1:
-            argument = arg_lookup[list(arg_lookup)[0]]  # first and only element
-            return {argument.name: argument.decode(' '.join(arg_list))}
-
         parsed_args = {}
         for name, argument in arg_lookup.items():
             if argument.many is False:
                 parsed_args[name] = argument.decode(arg_list.pop(0))
             elif argument.many is True:
-                raise ValueError(f"illegal number of positional arguments found for '{name}'")
+                parsed_args[name] = argument.decode(arg_list)
+                del arg_list[:]
             else:  # many is integer
-                parsed_args[name] = argument.decode(' '.join(arg_list[:argument.many]))
+                parsed_args[name] = argument.decode(arg_list[:argument.many])
                 del arg_list[:argument.many]
+
+        if len(arg_list):
+            raise ValueError(f"illegal number of positional arguments found")
 
         return parsed_args
 
@@ -50,7 +53,14 @@ def parse(cmd_line, arguments):
         parsed_kwargs = {}
         for flag, strings in parse_dict.items():
             argument = kwarg_lookup[flag]
-            parsed_kwargs[argument.name] = argument.decode(' '.join(strings))
+            if argument.novalue is not MISSING:
+                if not len(strings):
+                    parsed_kwargs[argument.name] = argument.novalue
+                    continue
+            if argument.many is False:
+                parsed_kwargs[argument.name] = argument.decode(strings[0])
+            else:
+                parsed_kwargs[argument.name] = argument.decode(strings)
 
         return parsed_kwargs
 

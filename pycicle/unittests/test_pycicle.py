@@ -32,7 +32,7 @@ class TestArgParser(unittest.TestCase):
 
         asserter = args_asserter(pos=1, default=0, required=3, valid=4, many=[1, 2], with_callback=5)
 
-        parser = Parser('1 -r 3 -v 4 -m 1 2 --w 5', target=asserter)
+        parser = Parser('1 -r 3 -v 4 -m 1 2 -w 5', target=asserter)
         parser(asserter)
         assert callback_target[0] == 5
 
@@ -105,7 +105,7 @@ class TestArgParser(unittest.TestCase):
                         target=asserter)
         real_cmd = parser._command()
         assert test_cmd == real_cmd
-        parser2 = Parser(use_gui=False,
+        parser2 = Parser(run_gui=False,
                          target=asserter)
         assert test_cmd == parser2._command()
 
@@ -160,7 +160,7 @@ class TestArgParser(unittest.TestCase):
         def callback(value, namespace):
             namespace.extra = value
 
-        class Parser(ArgParser):  # must be OK
+        class Parser(ArgParser):
             one = Argument(int, callback=callback)
 
         parser = Parser({'one': 1})

@@ -132,7 +132,7 @@ class TkArgWrapper(object):
         else:
             value = self.variable.get().strip(', ')
             if self.argument.many is not False:
-                value = [v.strip() for v in value.split(',') if v.strip()]
+                value = [v.strip() for v in value.split(' ') if v.strip()]
 
         try:
             setattr(self.app.parser, self.argument.name, value)
@@ -281,7 +281,7 @@ class TkArgWrapper(object):
     def _get_multi_choice_value_widget(self, master, **kwargs):
         self.variable = tk.StringVar(value=self.get_value())
         choices = list(self.argument.type.choices)
-        chosen_values = set(c.strip() for c in self.variable.get().split(','))
+        chosen_values = set(c.strip() for c in self.variable.get().split(' '))
         chosen = {choice: (choice in chosen_values) for choice in choices}
 
         def show():

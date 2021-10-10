@@ -21,7 +21,7 @@ def name_str(arg):
 def flag_str(arg):
     if arg.positional:
         return ''
-    return f"({', '.join(arg.flags)})"
+    return f"{', '.join(arg.flags)}"
 
 
 def type_str(arg):
