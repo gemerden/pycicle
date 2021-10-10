@@ -137,6 +137,8 @@ class Argument(object):
         if self.positional:
             if not all(arg.positional for arg in seen.values()):
                 raise ConfigError(f"Cannot place positional argument '{self.name}' after non-positional arguments")
+            if (len(seen) and self.many) or any(arg.many for arg in seen):
+                raise ConfigError(f"Cannot place positional argument '{self.name}' after non-positional arguments")
             return self.name,
         else:
             seen_shorts = set(a[0] for a in seen) | set(a[0] for a in self.reserved)
@@ -273,8 +275,8 @@ class ArgParser(Mapping):
     def __init__(self,
                  args: Union[str, Sequence, Mapping, None] = None,
                  target: Callable = None,  # target callable
-                 use_gui: bool = True):  # False prevents GUI from starting
-        if use_gui and self._no_arguments(args):
+                 run_gui: bool = False):  # False prevents GUI from starting
+        if run_gui and self._no_arguments(args):
             self._run_gui(target)
         else:
             self._init_parse(args)
