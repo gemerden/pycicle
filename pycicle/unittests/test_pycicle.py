@@ -116,6 +116,13 @@ class TestArgParser(unittest.TestCase):
         assert_product(Parser, one=(False, True),
                        two=([False, False], [True, False]))
 
+    def test_unrequired_positional(self):
+        class Parser(ArgParser):
+            one = Argument(int, positional=True, default=1)
+
+        asserter = args_asserter(one=1)
+        parser = Parser('', target=asserter)
+
     def test_choice(self):
         class Parser(ArgParser):
             one = Argument(Choice(1, 2, 3))
@@ -173,10 +180,10 @@ class TestArgParser(unittest.TestCase):
 class TestDescriptorConfig(unittest.TestCase):
     @classmethod
     def illegal(cls, kwargs):
-        return kwargs['positional'] and kwargs['novalue'] is not MISSING
+        return kwargs['positional'] and (kwargs['novalue'] is not MISSING or kwargs['required'] is False)
 
     def test_not_many_and_no_types(self):
-        for kwargs in dict_product(type=int, required=(False, True), many=False, default=(None, 0, 1),
+        for kwargs in dict_product(type=int, required=(False, True, None), many=False, default=(None, 0, 1),
                                    novalue=(MISSING, None, 2, 3), positional=(False, True),
                                    valid=(lambda v: v < 10, None)):
             if not self.illegal(kwargs):
@@ -184,7 +191,7 @@ class TestDescriptorConfig(unittest.TestCase):
                     arg = Argument(**kwargs)
 
     def test_many_and_no_types(self):
-        for kwargs in dict_product(type=int, required=(False, True), many=(True, 2), default=(None, [0, 1], [2, 3]),
+        for kwargs in dict_product(type=int, required=(False, True, None), many=(True, 2), default=(None, [0, 1], [2, 3]),
                                    novalue=(MISSING, None, [3, 4], [4, 5]), positional=(False, True),
                                    valid=(lambda v: len(v) < 10, None)):
             if not self.illegal(kwargs):
@@ -202,7 +209,7 @@ class TestDescriptorConfig(unittest.TestCase):
                        time: (time(22, 4, 5),)}
 
         for type, values in type_values.items():
-            for kwargs in dict_product(type=type, required=(False, True), many=False, default=(None,) + values,
+            for kwargs in dict_product(type=type, required=(False, True, None), many=False, default=(None,) + values,
                                        novalue=(MISSING, None) + values, positional=(False, True),
                                        valid=(lambda v: v <= max(values), None)):
                 if not self.illegal(kwargs):
@@ -220,7 +227,7 @@ class TestDescriptorConfig(unittest.TestCase):
                        time: (time(22, 4, 5),)}
 
         for type, values in type_values.items():
-            for kwargs in dict_product(type=type, required=(False, True), many=True, default=(None, values),
+            for kwargs in dict_product(type=type, required=(False, True, None), many=True, default=(None, values),
                                        novalue=(MISSING, None, values), positional=(False, True),
                                        valid=(lambda v: len(v) == len(values), None)):
                 if not self.illegal(kwargs):
@@ -239,7 +246,7 @@ class TestDescriptorConfig(unittest.TestCase):
                        time: (time(22, 4, 5), [])}
 
         for type, values in type_values.items():
-            for kwargs in dict_product(type=type, required=(False, True), many=False, default=values,
+            for kwargs in dict_product(type=type, required=(False, True, None), many=False, default=values,
                                        novalue=(MISSING, None) + values, positional=(False, True),
                                        valid=lambda v: v < min(values)):
                 with self.assertRaises(ConfigError):
@@ -247,7 +254,7 @@ class TestDescriptorConfig(unittest.TestCase):
                         arg = Argument(**kwargs)
 
         for type, values in type_values.items():
-            for kwargs in dict_product(type=type, required=(False, True), many=False, default=None,
+            for kwargs in dict_product(type=type, required=(False, True, None), many=False, default=None,
                                        novalue=values, positional=(False, True),
                                        valid=lambda v: v < min(values)):
                 with self.assertRaises(ConfigError):
@@ -255,7 +262,7 @@ class TestDescriptorConfig(unittest.TestCase):
                         arg = Argument(**kwargs)
 
         for type, values in type_values.items():
-            for kwargs in dict_product(type=type, required=(False, True), many=True, default=[values],
+            for kwargs in dict_product(type=type, required=(False, True, None), many=True, default=[values],
                                        novalue=[values], positional=(False, True),
                                        valid=lambda v: len(v) < 0):
                 with self.assertRaises(ConfigError):
@@ -263,7 +270,7 @@ class TestDescriptorConfig(unittest.TestCase):
                         arg = Argument(**kwargs)
 
         for type, values in type_values.items():
-            for kwargs in dict_product(type=type, required=(False, True), many=True, default=None,
+            for kwargs in dict_product(type=type, required=(False, True, None), many=True, default=None,
                                        novalue=[values], positional=(False, True),
                                        valid=lambda v: len(v) < 0):
                 with self.assertRaises(ConfigError):

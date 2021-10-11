@@ -2,6 +2,7 @@ from pycicle.tools import MISSING
 
 
 def parse(cmd_line, arguments):
+
     def create_lookups(arguments):
         arg_lookup, kwarg_lookup = {}, {}
         for argument in arguments:

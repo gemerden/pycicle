@@ -23,7 +23,7 @@ class Argument(object):
     positional: bool = False
     default: Any = None
     novalue: Any = MISSING
-    required: bool = False
+    required: Union[bool, None] = None
     valid: Callable[[Any], bool] = None
     callback: Callable[[Any, Mapping], Any] = None
     help: str = ""
@@ -41,6 +41,13 @@ class Argument(object):
 
     def __post_init__(self):
         """ mainly sets the encoders and decoders for the argument """
+        if self.positional:
+            if self.required is None:
+                self.required = True
+            elif self.required is False:
+                raise ConfigError(f"positional arguments must be required (the default)")
+        else:
+            self.required = self.required or False
         encode, decode = self.type_codecs.get(self.type, (None, None))
         self._encode = encode or str  # str is default
         self._decode = decode or self.type  # self.type is default (int('3') == 3)
