@@ -116,17 +116,16 @@ class TkArgWrapper(object):
         self.error = None
 
     def get_value(self):
-        value = getattr(self.app.parser,
-                        self.argument.name)
+        value = getattr(self.app.parser, self.argument.name)
         result = self.argument.encode(value)
-        if self.argument.many is not False:  # many can be bool or int
-            return ', '.join(result)
+        if self.argument.many:
+            return ' '.join(result)
         return result
 
     def sync_value(self, event=None):
-        if self.argument.novalue is not MISSING:
+        if self.argument.missing is not MISSING:
             if self.variable.get():
-                value = self.argument.novalue
+                value = self.argument.missing
             else:
                 value = self.argument.default
         else:
@@ -154,7 +153,7 @@ class TkArgWrapper(object):
     def reset_value(self):
         delattr(self.app.parser,
                 self.argument.name)
-        if self.argument.novalue is not MISSING:
+        if self.argument.missing is not MISSING:
             self.variable.set(False)
         else:
             self.variable.set(self.get_value())
@@ -181,8 +180,8 @@ class TkArgWrapper(object):
         return self.help_button
 
     def _get_value_widget(self, master, **kwargs):
-        if self.argument.novalue is not MISSING:
-            return self._get_novalue_widget(master, **kwargs)
+        if self.argument.missing is not MISSING:
+            return self._get_missing_widget(master, **kwargs)
         for cls, widget_getter in self.factory.items():
             if issubclass(self.argument.type, cls):
                 return widget_getter(master, **kwargs)
@@ -212,7 +211,7 @@ class TkArgWrapper(object):
             self.variable.set(foldername)
         self.app.synchronize()
 
-    def _get_novalue_widget(self, master, **kwargs):
+    def _get_missing_widget(self, master, **kwargs):
         self.variable = tk.BooleanVar(value=False)
         widget = tk.Frame(master)
         field = tk.Text(widget, height=1, **kwargs)
@@ -260,8 +259,13 @@ class TkArgWrapper(object):
         if 'state' not in kwargs:
             kwargs['state'] = "readonly"
         self.variable = tk.StringVar(value=self.get_value())
-        start_values = [] if self.argument.required else ['']
-        widget = ttk.Combobox(master, values=start_values + values)
+        default = self.argument.encode(self.argument.default)
+        if default in values:
+            values.remove(default)
+            values.insert(0, default)
+        else:
+            values.insert(0, '')
+        widget = ttk.Combobox(master, values=values)
         widget.config(textvariable=self.variable, **kwargs)
         widget.bind("<<ComboboxSelected>>", on_select)
         return widget
@@ -274,7 +278,7 @@ class TkArgWrapper(object):
         return self._get_base_choice_value_widget(master, values=values, **kwargs)
 
     def _get_boolean_value_widget(self, master, **kwargs):
-        if self.argument.many is not False:
+        if self.argument.many:
             return self._get_multi_choice_value_widget(master, **kwargs)
         return self._get_base_choice_value_widget(master, values=['no', 'yes'], **kwargs)
 
@@ -409,7 +413,7 @@ class ArgGui(BaseFrame):
 
     @property
     def arguments(self):
-        return self.parser._arguments
+        return self.parser._arguments.values()
 
     def create_widgets(self):
         self.form = FormFrame(self)

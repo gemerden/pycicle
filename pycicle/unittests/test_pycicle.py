@@ -23,21 +23,15 @@ class TestArgParser(unittest.TestCase):
         callback_target = []
 
         class Parser(ArgParser):
-            pos = Argument(int, positional=True)
             default = Argument(int, default=0)
-            required = Argument(int, required=True)
             valid = Argument(int, valid=lambda v: v < 10)
             many = Argument(int, many=True)
-            with_callback = Argument(int, callback=lambda v, ns: callback_target.extend([v, ns]))
 
-        asserter = args_asserter(pos=1, default=0, required=3, valid=4, many=[1, 2], with_callback=5)
+        asserter = args_asserter(default=0, valid=4, many=[1, 2])
 
-        parser = Parser('1 -r 3 -v 4 -m 1 2 -w 5', target=asserter)
-        parser(asserter)
-        assert callback_target[0] == 5
+        parser = Parser('-v 4 -m 1 2', target=asserter)
 
-        for kwargs in dict_product(pos=(-1, 0, 1), default=(-1, 0, 1), required=(-1, 0, 1),
-                                   valid=(-1, 0, 1), many=([9, 11],), with_callback=(-1, 0, 1)):
+        for kwargs in dict_product(default=(-1, 0, 1), valid=(-1, 0, 1), many=([9, 11],)):
             asserter = args_asserter(**kwargs)
 
             cmd = make_test_command(Parser, kwargs)
@@ -69,10 +63,10 @@ class TestArgParser(unittest.TestCase):
         assert parser.name == 'bob'
         assert parser.units == 3
 
-    def test_novalue(self):
+    def test_missing(self):
         class Parser(ArgParser):
-            name = Argument(str, default='bob', novalue='ann')
-            units = Argument(int, novalue=3)
+            name = Argument(str, default='bob', missing='ann')
+            units = Argument(int, default=0, missing=3)
 
         parser = Parser('--units')
 
@@ -82,11 +76,11 @@ class TestArgParser(unittest.TestCase):
         parser = Parser('--name')
 
         assert parser.name == 'ann'
-        assert parser.units is None
+        assert parser.units == 0
 
-        with self.assertRaises(ValueError):
+        with self.assertRaises(ConfigError):
             class Parser(ArgParser):
-                name = Argument(int, novalue='ann')
+                name = Argument(int, missing='ann')
 
     def test_datetime_types_and_defaults(self):
         from datetime import datetime, time, date, timedelta
@@ -97,7 +91,7 @@ class TestArgParser(unittest.TestCase):
             date_ = Argument(date, default=date(1999, 6, 8))
             time_ = Argument(time, default=time(12, 12, 12))
 
-        defaults = {arg.name: arg.default for arg in Parser._arguments}
+        defaults = {name: arg.default for name, arg in Parser._arguments.items()}
         asserter = args_asserter(**defaults)
 
         test_cmd = make_test_command(Parser, defaults)
@@ -111,14 +105,14 @@ class TestArgParser(unittest.TestCase):
     def test_bool(self):
         class Parser(ArgParser):
             one = Argument(bool)
-            two = Argument(bool, many=2)
+            two = Argument(bool, many=True)
 
         assert_product(Parser, one=(False, True),
                        two=([False, False], [True, False]))
 
     def test_unrequired_positional(self):
         class Parser(ArgParser):
-            one = Argument(int, positional=True, default=1)
+            one = Argument(int, default=1)
 
         asserter = args_asserter(one=1)
         parser = Parser('', target=asserter)
@@ -126,7 +120,7 @@ class TestArgParser(unittest.TestCase):
     def test_choice(self):
         class Parser(ArgParser):
             one = Argument(Choice(1, 2, 3))
-            two = Argument(Choice(1, 2, 3), many=2)
+            two = Argument(Choice(1, 2, 3), many=True)
 
         assert_product(Parser, one=(1, 2), two=([1, 3], [2, 1]))
 
@@ -134,7 +128,7 @@ class TestArgParser(unittest.TestCase):
         class Parser(ArgParser):
             one = Argument(File('.txt', existing=False))
             two = Argument(File('.py', existing=True))
-            three = Argument(File('.txt', existing=False), many=2)
+            three = Argument(File('.txt', existing=False), many=True)
 
         assert_product(Parser, one=('c:\\does_not_exist.txt', '..\\unittests\\does_not_exist.txt'),
                        two=(__file__, '..\\unittests\\test_pycicle.py'),
@@ -144,34 +138,11 @@ class TestArgParser(unittest.TestCase):
         class Parser(ArgParser):
             one = Argument(Folder(existing=False))
             two = Argument(Folder(existing=True))
-            three = Argument(Folder(existing=False), many=2)
+            three = Argument(Folder(existing=False), many=True)
 
         assert_product(Parser, one=('c:\\does_not_exist', '..\\unittests\\does_not_exist'),
                        two=(os.path.dirname(__file__), '..\\unittests'),
                        three=(['c:\\does_not_exist', '..\\unittests\\does_not_exist'],))
-
-    def test_positional_ordering(self):
-        """ check whether positional arguments after non-positional arguments raise errors """
-
-        class Parser1(ArgParser):  # must be OK
-            one = Argument(int, positional=True)
-            two = Argument(int, positional=False)
-
-        with self.assertRaises(ValueError):
-            class Parser2(ArgParser):
-                one = Argument(int, positional=False)
-                two = Argument(int, positional=True)
-
-    def test_callback_adding_extra_arg(self):
-        def callback(value, namespace):
-            namespace.extra = value
-
-        class Parser(ArgParser):
-            one = Argument(int, callback=callback)
-
-        parser = Parser({'one': 1})
-
-        assert parser.extra == 1
 
     def test_command_line(self):
         pass
@@ -180,20 +151,18 @@ class TestArgParser(unittest.TestCase):
 class TestDescriptorConfig(unittest.TestCase):
     @classmethod
     def illegal(cls, kwargs):
-        return kwargs['positional'] and (kwargs['novalue'] is not MISSING or kwargs['required'] is False)
+        return kwargs['missing'] is not MISSING and kwargs['default'] is MISSING
 
     def test_not_many_and_no_types(self):
-        for kwargs in dict_product(type=int, required=(False, True, None), many=False, default=(None, 0, 1),
-                                   novalue=(MISSING, None, 2, 3), positional=(False, True),
-                                   valid=(lambda v: v < 10, None)):
+        for kwargs in dict_product(type=int, many=False, default=(None, 0, 1),
+                                   missing=(MISSING, None, 2, 3), valid=(lambda v: v < 10, None)):
             if not self.illegal(kwargs):
                 class Parser(ArgParser):
                     arg = Argument(**kwargs)
 
     def test_many_and_no_types(self):
-        for kwargs in dict_product(type=int, required=(False, True, None), many=(True, 2), default=(None, [0, 1], [2, 3]),
-                                   novalue=(MISSING, None, [3, 4], [4, 5]), positional=(False, True),
-                                   valid=(lambda v: len(v) < 10, None)):
+        for kwargs in dict_product(type=int, many=True, default=(None, [0, 1], [2, 3]),
+                                   missing=(MISSING, None, [3, 4], [4, 5]), valid=(lambda v: len(v) < 10, None)):
             if not self.illegal(kwargs):
                 class Parser(ArgParser):
                     arg = Argument(**kwargs)
@@ -209,9 +178,8 @@ class TestDescriptorConfig(unittest.TestCase):
                        time: (time(22, 4, 5),)}
 
         for type, values in type_values.items():
-            for kwargs in dict_product(type=type, required=(False, True, None), many=False, default=(None,) + values,
-                                       novalue=(MISSING, None) + values, positional=(False, True),
-                                       valid=(lambda v: v <= max(values), None)):
+            for kwargs in dict_product(type=type, many=False, default=(None,) + values,
+                                       missing=(MISSING, None) + values, valid=(lambda v: v <= max(values), None)):
                 if not self.illegal(kwargs):
                     class Parser(ArgParser):
                         arg = Argument(**kwargs)
@@ -227,15 +195,14 @@ class TestDescriptorConfig(unittest.TestCase):
                        time: (time(22, 4, 5),)}
 
         for type, values in type_values.items():
-            for kwargs in dict_product(type=type, required=(False, True, None), many=True, default=(None, values),
-                                       novalue=(MISSING, None, values), positional=(False, True),
-                                       valid=(lambda v: len(v) == len(values), None)):
+            for kwargs in dict_product(type=type, many=True, default=(None, values),
+                                       missing=(MISSING, None, values), valid=(lambda v: len(v) == len(values), None)):
                 if not self.illegal(kwargs):
                     class Parser(ArgParser):
                         arg = Argument(**kwargs)
 
     def test_validation(self):
-        """ very basic but a lot of combinations, mainly aiming for default and novalue validation """
+        """ very basic but a lot of combinations, mainly aiming for default and missing validation """
         type_values = {bool: (False, True, []),
                        int: (-1, 0, 1, 100, []),
                        float: (-1.0, 0.0, 1.0, float('inf'), []),
@@ -246,33 +213,29 @@ class TestDescriptorConfig(unittest.TestCase):
                        time: (time(22, 4, 5), [])}
 
         for type, values in type_values.items():
-            for kwargs in dict_product(type=type, required=(False, True, None), many=False, default=values,
-                                       novalue=(MISSING, None) + values, positional=(False, True),
-                                       valid=lambda v: v < min(values)):
+            for kwargs in dict_product(type=type, many=False, default=values,
+                                       missing=(MISSING, None) + values, valid=lambda v: v < min(values)):
                 with self.assertRaises(ConfigError):
                     class Parser(ArgParser):
                         arg = Argument(**kwargs)
 
         for type, values in type_values.items():
-            for kwargs in dict_product(type=type, required=(False, True, None), many=False, default=None,
-                                       novalue=values, positional=(False, True),
-                                       valid=lambda v: v < min(values)):
+            for kwargs in dict_product(type=type, many=False, default=None,
+                                       missing=values, valid=lambda v: v < min(values)):
                 with self.assertRaises(ConfigError):
                     class Parser(ArgParser):
                         arg = Argument(**kwargs)
 
         for type, values in type_values.items():
-            for kwargs in dict_product(type=type, required=(False, True, None), many=True, default=[values],
-                                       novalue=[values], positional=(False, True),
-                                       valid=lambda v: len(v) < 0):
+            for kwargs in dict_product(type=type, many=True, default=[values],
+                                       missing=[values], valid=lambda v: len(v) < 0):
                 with self.assertRaises(ConfigError):
                     class Parser(ArgParser):
                         arg = Argument(**kwargs)
 
         for type, values in type_values.items():
-            for kwargs in dict_product(type=type, required=(False, True, None), many=True, default=None,
-                                       novalue=[values], positional=(False, True),
-                                       valid=lambda v: len(v) < 0):
+            for kwargs in dict_product(type=type, many=True, default=None,
+                                       missing=[values], valid=lambda v: len(v) < 0):
                 with self.assertRaises(ConfigError):
                     class Parser(ArgParser):
                         arg = Argument(**kwargs)

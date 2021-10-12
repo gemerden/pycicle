@@ -6,8 +6,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, date, time
 from typing import Mapping, Callable, Union, Any, Sequence, Iterable
 
-from pycicle import arg_gui, cmd_parser
-from pycicle.tools import get_stdout, MISSING
+from pycicle import arg_gui
+from pycicle.tools import MISSING, DEFAULT
 from pycicle.parsers import parse_bool, encode_bool, encode_datetime, parse_datetime, encode_date, parse_date, \
     encode_time, parse_time, parse_timedelta, encode_timedelta
 
@@ -19,13 +19,10 @@ class ConfigError(ValueError):
 @dataclass
 class Argument(object):
     type: Callable
-    many: Union[bool, int] = False
-    positional: bool = False
-    default: Any = None
-    novalue: Any = MISSING
-    required: Union[bool, None] = None
+    many: bool = False
+    default: Any = MISSING
+    missing: Any = MISSING
     valid: Callable[[Any], bool] = None
-    callback: Callable[[Any, Mapping], Any] = None
     help: str = ""
     name: Union[str, None] = None  # set in __set_name__
 
@@ -41,17 +38,14 @@ class Argument(object):
 
     def __post_init__(self):
         """ mainly sets the encoders and decoders for the argument """
-        if self.positional:
-            if self.required is None:
-                self.required = True
-            elif self.required is False:
-                raise ConfigError(f"positional arguments must be required (the default)")
-        else:
-            self.required = self.required or False
         encode, decode = self.type_codecs.get(self.type, (None, None))
         self._encode = encode or str  # str is default
         self._decode = decode or self.type  # self.type is default (int('3') == 3)
         self.flags = None  # set in ArgParser.__init_subclass__
+
+    @property
+    def required(self):
+        return self.default is MISSING
 
     def __set_name__(self, cls, name):
         """ descriptor method to set the name to the attribute name in the owner class """
@@ -64,16 +58,14 @@ class Argument(object):
         try:
             return obj.__dict__[self.name]
         except KeyError:
-            return self.default
+            return self.default  # can be MISSING
 
     def __set__(self, obj, value):
-        """ see python descriptor docs for the magic """
-        if self.callback:
-            self.callback(value, obj)
+        """ see python descriptor documentation for the magic """
         obj.__dict__[self.name] = self.validate(value)
 
     def __delete__(self, obj):
-        """ see python descriptor docs for the magic """
+        """ see python descriptor documentation for the magic """
         obj.__dict__.pop(self.name, None)
 
     def check_config(self):
@@ -82,16 +74,17 @@ class Argument(object):
         python __set_name__ changes all exceptions to (somewhat vague) RuntimeError.
         """
         if self.name.startswith('_'):
-            raise ConfigError(f"Argument name '{self.name}' cannot start with an '_' to prevent name conflicts")
-        self.default = self.validate(self.default, _config=True)
-        if self.novalue is not MISSING:
-            if self.positional:
-                raise ConfigError(f"Argument '{self.name}' is flag only and cannot be positional")
-            self.novalue = self.validate(self.novalue, _config=True)
+            raise ConfigError(f"Argument name '{self.name}' cannot start with an '_' (to prevent name conflicts)")
+        if self.default is not MISSING:
+            self.default = self.validate(self.default, _config=True)
+        if self.missing is not MISSING:
+            if self.default is MISSING:
+                raise ConfigError(f"if 'missing' is defined, a default must also be defined in '{self.name}'")
+            self.missing = self.validate(self.missing, _config=True)
 
     def encode(self, value):
         """ creates str version of value, takes 'many' into account """
-        if value is None:
+        if value is None or value is MISSING:
             return ''
         if self.many:
             return [self._encode(v) for v in value]
@@ -100,69 +93,63 @@ class Argument(object):
     def decode(self, value):
         """ creates value from str, takes 'many' into account """
         if self.type is not str and value == '':
-            return None
+            return self.default
         if self.many:
             return [self._decode(v) for v in value]
         return self._decode(value)
 
-    def encoded(self, obj):
-        """ convenience, applies encode to object """
-        return self.encode(self.__get__(obj))
-
-    def decoded(self, dct):
-        """ convenience, applies decode to dict, e.g. for init from json """
-        return self.decode(dct[self.name])
+    def parse(self, value):
+        if self.missing is not MISSING and value is MISSING:
+            return self.missing
+        if value is MISSING or value is DEFAULT:
+            if self.default is MISSING:
+                raise ValueError(f"missing value for '{self.name}'")
+            return self.default
+        return self.decode(value)
 
     def validate(self, value, _config=False):
         """ performs validation and decoding of argument values """
         exception_class = ConfigError if _config else ValueError
-        if value is None or value is MISSING:
-            if not _config and self.required:
+        if value is MISSING:
+            if not _config and self.default is MISSING:
                 raise ValueError(f"Argument value '{self.name}' is required")
             return value
-        if self.many is not False:
-            if not isinstance(value, (list, tuple)):
+        if _config and value is None:
+            return None
+        if value is self.default is None:
+            return None
+        if self.many:
+            if not isinstance(value, Sequence):
                 raise exception_class(f"Argument value for '{self.name}' is not a list or tuple")
             value = list(value)
-        if not isinstance(self.many, bool):
-            if len(value) != self.many:
-                raise exception_class(f"Argument value for '{self.name}' is not of length {self.many}")
         try:
-            if isinstance(value, str) or (self.many is not False and all(isinstance(v, str) for v in value)):
+            if isinstance(value, str) or (self.many and all(isinstance(v, str) for v in value)):
                 value = self.decode(value)
-            if value is not None and self.valid and not self.valid(value):
+            if self.valid and not self.valid(value):
                 raise exception_class(f"Invalid value: {str(value)} for argument '{self.name}'")
         except TypeError as e:
             raise exception_class(str(e))
         return value
 
     def _get_flag_s(self, seen) -> tuple:
-        """ internal: creates flags for argument (e.g. -f, --file), no flag if positional """
+        """ internal: creates flags for argument (e.g. -f, --file) """
         if self.name in self.reserved:
             raise ConfigError(f"Argument name '{self.name}' is reserved")
 
-        if self.positional:
-            if not all(arg.positional for arg in seen.values()):
-                raise ConfigError(f"Cannot place positional argument '{self.name}' after non-positional arguments")
-            if any(arg.many is True for arg in seen.values()):
-                raise ConfigError(f"Cannot place positional argument '{self.name}' after non-positional arguments")
-            return ()
-        else:
-            seen_shorts = set(a[0] for a in seen) | set(a[0] for a in self.reserved)
-            if self.name[0] in seen_shorts:
-                if len(self.name) == 1:
-                    raise ConfigError(f"'-{self.name[0]}' already exist as a short argument name")
-                return '--' + self.name,
-            return '--' + self.name, '-' + self.name[0]
+        seen_shorts = set(a[0] for a in seen) | set(a[0] for a in self.reserved)
+        if self.name[0] in seen_shorts:
+            if len(self.name) == 1:
+                raise ConfigError(f"'-{self.name[0]}' already exist as a short argument name")
+            return '--' + self.name,
+        return '--' + self.name, '-' + self.name[0]
 
     def finalize(self, seen):
         """ adds argument to argparse parser, converts options """
         self.flags = self._get_flag_s(seen)
+        seen[self.name] = self
 
     def _cmd_flag(self, short=False):
         """ return flag e.g. '--version', '-v' if short"""
-        if len(self.flags) == 0:  # ~ positional is True
-            return ''
         if len(self.flags) == 1:
             return self.flags[0]
         return self.flags[1] if short else self.flags[0]
@@ -176,15 +163,13 @@ class Argument(object):
     def cmd(self, obj, short=False):
         """ creates command line part for this argument """
         value = self.__get__(obj)
-        if self.novalue is not MISSING:
-            if value == self.novalue:
+        if self.missing is not MISSING:
+            if value == self.missing:
                 return self._cmd_flag(short)
             return ''  # value will be the default
         cmd_value = self._cmd_value(value)
         if cmd_value == '':
             return ''
-        if self.positional:
-            return cmd_value
         return f"{self._cmd_flag(short)} {cmd_value}"
 
     def to_json(self, obj):
@@ -213,15 +198,13 @@ class ArgParser(Mapping):
 
     """
     _arguments = None  # set in __init_subclass__
+    _flag_lookup = None  # set in __init_subclass__
 
     def __init_subclass__(cls, **kwargs):
         """ mainly initialises the argparse.ArgumentParser and adds arguments to the parser """
         super().__init_subclass__(**kwargs)
-        cls._arguments = tuple(cls._get_arguments())
-        seen = {}  # to prevent repeated short flags
-        for arg in cls._arguments:
-            arg.finalize(seen)
-            seen[arg.name] = arg
+        cls._arguments = cls._get_arguments()
+        cls._flag_lookup = cls._create_flag_lookup()
 
     @classmethod
     def _get_arguments(cls):
@@ -232,7 +215,62 @@ class ArgParser(Mapping):
                 if isinstance(arg, Argument):
                     arg.check_config()  # see comment in 'check_config'
                     arguments[arg.name] = arg  # override if already present
-        return arguments.values()
+        seen = {}  # to prevent repeated short flags
+        for arg in arguments.values():
+            arg.finalize(seen)
+        return arguments
+
+    @classmethod
+    def _create_flag_lookup(cls):
+        flag_lookup = {}
+        for argument in cls._arguments.values():
+            for flag in argument.flags:
+                flag_lookup[flag] = argument
+        return flag_lookup
+
+    @classmethod
+    def _parse(cls, cmd_line):
+        arguments = cls._arguments
+        flag_lookup = cls._flag_lookup
+
+        if isinstance(cmd_line, str):
+            cmd_line = [s.strip() for s in cmd_line.split()]
+
+        def get_args_kwargs(cmd_line):
+            kwargs = {None: []}  # None key for positional arguments
+            current_name = None
+            for flag_or_value in cmd_line:
+                if flag_or_value in flag_lookup:  # flagged
+                    current_name = flag_lookup[flag_or_value].name
+                    kwargs[current_name] = MISSING
+                elif current_name is not None:  # not flagged
+                    if arguments[current_name].many:
+                        if kwargs[current_name] is MISSING:
+                            kwargs[current_name] = []
+                        kwargs[current_name].append(flag_or_value)
+                    else:
+                        kwargs[current_name] = flag_or_value
+                else:
+                    kwargs[None].append(flag_or_value)
+            args = kwargs.pop(None)
+            return args, kwargs
+
+        args, kwargs = get_args_kwargs(cmd_line)
+
+        for name, argument in arguments.items():
+            if name in kwargs:
+                break  # all remaining arguments have been assigned
+            if len(args):
+                if argument.many:
+                    kwargs[name] = args
+                    args.clear()
+                else:
+                    kwargs[name] = args.pop(0)
+
+        if len(args):
+            raise ValueError("too many positional arguments found")
+
+        return {n: arg.parse(kwargs.get(n, DEFAULT)) for n, arg in arguments.items()}
 
     @classmethod
     def _cmd_help(cls):
@@ -244,26 +282,26 @@ class ArgParser(Mapping):
         """ used by GUI to load argument values from file """
         with open(filename, mode) as f:
             json_dict = json.load(f)
-        return cls({arg.name: arg.decoded(json_dict) for arg in cls._arguments})
+        return cls({name: arg.decode(json_dict[name]) for name, arg in cls._arguments.items()})
 
     def __init__(self,
-                 args: Union[str, Sequence, Mapping, None] = None,
+                 args: Union[str, Sequence, Mapping, None] = None,  # representation of command line arguments
                  target: Callable = None,  # target callable
-                 run_gui: bool = False):  # False prevents GUI from starting
+                 run_gui: bool = False):   # if True: start the parser as a GUI
         if run_gui:
             self._run_gui(target)
         else:
-            self._parse(args)
+            self._parse_args(args)
             if target:
                 self(target)  # uses the __call__ method
 
     def __len__(self) -> int:
         """ return number of arguments """
-        return len(self.__dict__)
+        return len(self._arguments)
 
     def __iter__(self) -> Iterable:
         """ iterates over argument names """
-        yield from self.__dict__
+        yield from self._arguments
 
     def __getitem__(self, name: str):
         """ returns value for argument 'name'"""
@@ -273,7 +311,7 @@ class ArgParser(Mapping):
         """ starts the GUI """
         arg_gui.ArgGui(parser=self, target=target).mainloop()
 
-    def _parse(self, args):
+    def _parse_args(self, args):
         if args is None:
             if "PYTEST_CURRENT_TEST" in os.environ:
                 args = sys.argv[1:]  # fix for running tests with pytest
@@ -289,12 +327,12 @@ class ArgParser(Mapping):
         if '-h' in args or '--help' in args:
             print(self._cmd_help())
         else:
-            parsed = cmd_parser.parse(args, arguments=self._arguments)
+            parsed = self._parse(args)
             self._update(parsed)
 
     def _update(self, kwargs):
         """ refills self.__dict__ with validated values """
-        new_kwargs = {arg.name: arg.default for arg in self._arguments}
+        new_kwargs = {name: arg.default for name, arg in self._arguments.items()}
         new_kwargs.update(self.__dict__)
         new_kwargs.update(kwargs)
         self.__dict__.clear()
@@ -305,7 +343,7 @@ class ArgParser(Mapping):
         """ creates the command line that can be used to call the parser:
             - short: short flags (e.g. -d),
             - prog: called file from command line is included"""
-        cmds = [arg.cmd(self, short) for arg in self._arguments]
+        cmds = [arg.cmd(self, short) for arg in self._arguments.values()]
         arg_string = ' '.join(cmd for cmd in cmds if cmd)
         if prog:
             return f"{os.path.basename(sys.argv[0])} {arg_string}"
@@ -315,14 +353,14 @@ class ArgParser(Mapping):
         """ calls the target with the argument values """
         if target is None:
             raise ValueError(f"cannot call missing target")
-        for arg in self._arguments:
+        for arg in self._arguments.values():
             arg.check_required(self)
         self._parse(self._command())  # runs through the validation once again
         return target(**self)  # call the target
 
     def _save(self, filename: str, mode: str = 'w'):
         """ saves arguments as json to a file """
-        json_dict = {arg.name: arg.encoded(self) for arg in self._arguments}
+        json_dict = {name: arg.encode(getattr(self, name)) for name, arg in self._arguments.items()}
         with open(filename, mode) as f:
             f.write(json.dumps(json_dict))
 

@@ -11,17 +11,14 @@ if __name__ == '__main__':
          - help
          - more help
         """
-        pos = Argument(float, positional=True, help='Is this helping?')
-        default = Argument(int, default=1)
-        required = Argument(str, required=True, default='yeah')
+        default = Argument(int, default=1, help='helpful?')
         valid = Argument(int, valid=lambda v: v < 10)
-        bool = Argument(bool)
+        bool = Argument(bool, default=False)
         many = Argument(int, many=True)
-        time = Argument(time)
-        callback = Argument(int, callback=lambda v, ns: print('YES'))
-        file = Argument(File('.json'), many=True)
-        choice = Argument(Choice("apple", "pear", "orange"), many=True)
-        switch = Argument(int, default=2, novalue=3)
+        time = Argument(time, default=None)
+        file = Argument(File('.json'), many=True, default=[])
+        choice = Argument(Choice("apple", "pear", "orange"), many=True, default=['pear'])
+        switch = Argument(int, default=2, missing=3)
 
 
     def printer(**kwargs):

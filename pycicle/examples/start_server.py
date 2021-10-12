@@ -17,17 +17,17 @@ class StartServer(ArgParser):
      - help
      - more help
     """
-    proto = Argument(Choice('http', 'https'), required=True, default='http',
+    proto = Argument(Choice('http', 'https'), default='http',
                      help='the protocol the server will use')
-    host = Argument(str, required=True, default='0.0.0.0', valid=is_valid_host,
+    host = Argument(str, default='0.0.0.0', valid=is_valid_host,
                     help='host IP of the server')
-    port = Argument(str, required=True, valid=is_valid_port, default=8080,
+    port = Argument(str, valid=is_valid_port, default=8080,
                     help='port on which the server should run')
-    restart = Argument(bool, default=True, required=True,
+    restart = Argument(bool, default=True,
                        help='should the server restart after crash?')
-    debug = Argument(bool, default=False, required=True,
+    debug = Argument(bool, default=False,
                      help='run in debug mode')
-    logfile = Argument(File('.log'), required=False, default=None,
+    logfile = Argument(File('.log'), default=None,
                        help='logfile for the server, log to stdout if absent')
 
 

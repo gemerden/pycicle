@@ -19,8 +19,6 @@ def name_str(arg):
 
 
 def flag_str(arg):
-    if arg.positional:
-        return ''
     return f"{', '.join(arg.flags)}"
 
 
@@ -34,22 +32,20 @@ def req_str(arg):
     return str(arg.required).lower()
 
 
-def count_str(arg):
-    if isinstance(arg.many, bool):
-        return ''
-    return str(arg.many)
+def many_str(arg):
+    return str(arg.many).lower()
 
 
 def default_str(arg):
-    if arg.default is None:
+    if arg.default is None or arg.default is MISSING:
         return ''
     return arg.encode(arg.default)
 
 
-def novalue_str(arg):
-    if arg.novalue is MISSING:
+def missing_str(arg):
+    if arg.missing is MISSING:
         return ''
-    return arg.encode(arg.novalue)
+    return arg.encode(arg.missing)
 
 
 def _func_str(func):
@@ -60,11 +56,11 @@ def _func_str(func):
         src = inspect.getsource(func)
         _, _, code = src.partition(':')
         return code.strip()
-    return name
+    return getattr(func, '__doc__', name).strip()
 
 
 def valid_str(arg):
-    if not arg.valid:
+    if arg.valid is None:
         return ''
     return _func_str(arg.valid)
 
@@ -73,16 +69,16 @@ str_funcs = dict(
     flags=flag_str,
     name=name_str,
     type=type_str,
-    count=count_str,
+    many=many_str,
     required=req_str,
     default=default_str,
-    novalue=novalue_str,
+    missing=missing_str,
     valid=valid_str,
 )
 
 
 def get_parser_help(parser, **kwargs):
-    option_help = ItemList(items={arg.name: arg.help for arg in parser._arguments if arg.help},
+    option_help = ItemList(items={arg.name: arg.help for arg in parser._arguments.values() if arg.help},
                            extra='\nMore help can be found under the help buttons next to the options.')
     command_help = f"current: {parser._command(prog=True)}\n\n{parser._cmd_help()}"
     chapters = [Chapter('Option Help', content=option_help('-'))(**kwargs),
@@ -94,7 +90,7 @@ def get_parser_help(parser, **kwargs):
 
 
 def get_argument_help(argument, error=None, **kwargs):
-    arg_specs= ItemList(items={name: func(argument) for name, func in str_funcs.items()})
+    arg_specs = ItemList(items={name: func(argument) for name, func in str_funcs.items()})
     chapters = [Chapter('Help', content=argument.help)(**kwargs),
                 Chapter('Specifications', content=arg_specs(''))(**kwargs)]
     if error:

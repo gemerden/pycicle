@@ -29,13 +29,10 @@ def make_test_command(parser_class, kwargs, short=False):
     for name, value in kwargs.items():
         arg = getattr(parser_class, name)
         value = create_value(arg, value)
-        if arg.positional:
-            cmd = cmd + f" {value}"
+        if short:
+            cmd = cmd + f" -{name[0]} {value}"  # can create doubles
         else:
-            if short:
-                cmd = cmd + f" -{name[0]} {value}"  # can create doubles
-            else:
-                cmd = cmd + f" --{name} {value}"
+            cmd = cmd + f" --{name} {value}"
     return cmd.strip()
 
 
