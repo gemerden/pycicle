@@ -50,6 +50,7 @@ class Argument(object):
     def __set_name__(self, cls, name):
         """ descriptor method to set the name to the attribute name in the owner class """
         self.name = name
+        self.flags = ('--' + name, '-' + name[0])
 
     def __get__(self, obj, cls=None):
         """ see python descriptor docs for the magic """
@@ -68,19 +69,26 @@ class Argument(object):
         """ see python descriptor documentation for the magic """
         obj.__dict__.pop(self.name, None)
 
-    def check_config(self):
+    def check_config(self, existing):
         """
         Called in __init_subclass__ of owner class because self.name must be set to give clearer error messages and
         python __set_name__ changes all exceptions to (somewhat vague) RuntimeError.
         """
+        if self.name in self.reserved:
+            raise ConfigError(f"Argument name '{self.name}' is reserved")
         if self.name.startswith('_'):
             raise ConfigError(f"Argument name '{self.name}' cannot start with an '_' (to prevent name conflicts)")
+
         if self.default is not MISSING:
             self.default = self.validate(self.default, _config=True)
         if self.missing is not MISSING:
             if self.default is MISSING:
                 raise ConfigError(f"if 'missing' is defined, a default must also be defined in '{self.name}'")
             self.missing = self.validate(self.missing, _config=True)
+
+        existing_short_flags = set(a[0] for a in existing) | set(a[0] for a in self.reserved)
+        if self.flags[-1] in existing_short_flags:
+            self.flags = self.flags[:-1]  # remove short flag
 
     def encode(self, value):
         """ creates str version of value, takes 'many' into account """
@@ -130,23 +138,6 @@ class Argument(object):
         except TypeError as e:
             raise exception_class(str(e))
         return value
-
-    def _get_flag_s(self, seen) -> tuple:
-        """ internal: creates flags for argument (e.g. -f, --file) """
-        if self.name in self.reserved:
-            raise ConfigError(f"Argument name '{self.name}' is reserved")
-
-        seen_shorts = set(a[0] for a in seen) | set(a[0] for a in self.reserved)
-        if self.name[0] in seen_shorts:
-            if len(self.name) == 1:
-                raise ConfigError(f"'-{self.name[0]}' already exist as a short argument name")
-            return '--' + self.name,
-        return '--' + self.name, '-' + self.name[0]
-
-    def finalize(self, seen):
-        """ adds argument to argparse parser, converts options """
-        self.flags = self._get_flag_s(seen)
-        seen[self.name] = self
 
     def _cmd_flag(self, short=False):
         """ return flag e.g. '--version', '-v' if short"""
@@ -213,11 +204,8 @@ class ArgParser(Mapping):
         for c in reversed(cls.__mro__):
             for name, arg in vars(c).items():
                 if isinstance(arg, Argument):
-                    arg.check_config()  # see comment in 'check_config'
-                    arguments[arg.name] = arg  # override if already present
-        seen = {}  # to prevent repeated short flags
-        for arg in arguments.values():
-            arg.finalize(seen)
+                    arg.check_config(arguments)  # see comment in 'check_config'
+                    arguments[arg.name] = arg  # overrides if already present
         return arguments
 
     @classmethod
@@ -230,7 +218,7 @@ class ArgParser(Mapping):
 
     @classmethod
     def _parse(cls, cmd_line):
-        arguments = cls._arguments
+        arg_defs = cls._arguments
         flag_lookup = cls._flag_lookup
 
         if isinstance(cmd_line, str):
@@ -244,33 +232,32 @@ class ArgParser(Mapping):
                     current_name = flag_lookup[flag_or_value].name
                     kwargs[current_name] = MISSING
                 elif current_name is not None:  # not flagged
-                    if arguments[current_name].many:
+                    if arg_defs[current_name].many:
                         if kwargs[current_name] is MISSING:
                             kwargs[current_name] = []
                         kwargs[current_name].append(flag_or_value)
                     else:
                         kwargs[current_name] = flag_or_value
-                else:
+                else:  # positional argument
                     kwargs[None].append(flag_or_value)
             args = kwargs.pop(None)
             return args, kwargs
 
         args, kwargs = get_args_kwargs(cmd_line)
 
-        for name, argument in arguments.items():
-            if name in kwargs:
-                break  # all remaining arguments have been assigned
-            if len(args):
-                if argument.many:
-                    kwargs[name] = args
-                    args.clear()
-                else:
-                    kwargs[name] = args.pop(0)
-
-        if len(args):
+        pos_arg_defs = [a for n, a in arg_defs.items() if n not in kwargs]
+        try:  # note: if args are empty, index error cannot occur
+            while len(args) and not pos_arg_defs[0].many:
+                kwargs[pos_arg_defs.pop(0).name] = args.pop(0)
+            while len(args) and not pos_arg_defs[-1].many:
+                kwargs[pos_arg_defs.pop(-1).name] = args.pop(-1)
+        except IndexError:
             raise ValueError("too many positional arguments found")
 
-        return {n: arg.parse(kwargs.get(n, DEFAULT)) for n, arg in arguments.items()}
+        if len(args) and len(pos_arg_defs) == 1:
+            kwargs[pos_arg_defs[0].name] = args
+
+        return {n: arg.parse(kwargs.get(n, DEFAULT)) for n, arg in arg_defs.items()}
 
     @classmethod
     def _cmd_help(cls):
