@@ -19,6 +19,20 @@ class TestArgParser(unittest.TestCase):
         import subprocess
         subprocess.run(['python', __file__, "-h"])
 
+    def test_target(self):
+        """ test whether target gets called """
+        result = {}
+
+        def target(**kwargs):
+            result.update(kwargs)
+
+        class Parser(ArgParser):
+            arg = Argument(int)
+
+        Parser('--arg 1', target=target)
+        assert result == {'arg': 1}
+
+
     def test_basic_keywords(self):
         callback_target = []
 
@@ -38,6 +52,41 @@ class TestArgParser(unittest.TestCase):
             parser = Parser(cmd, target=asserter)
             assert parser._command(short=False) == cmd
             assert parser._command(short=True) == make_test_command(Parser, kwargs, short=True)
+
+    def test_positionals(self):
+        class Parser(ArgParser):
+            a = Argument(int, many=True)
+
+        def target(**kwargs):
+            assert kwargs == dict(a=[1, 2, 3, 4])
+
+        Parser('1 2 3 4', target=target)
+
+        class Parser(ArgParser):
+            a = Argument(int, many=False)
+            b = Argument(int, many=True)
+            c = Argument(int, many=False)
+
+        def target(**kwargs):
+            assert kwargs == dict(a=1, b=[2, 3], c=4)
+
+        Parser('1 2 3 4', target=target)
+
+        class Parser(ArgParser):
+            b = Argument(int, many=True)
+            c = Argument(int, many=True)
+
+        with self.assertRaises(ValueError):
+            Parser('1 2', target=target)
+
+        class Parser(ArgParser):
+            a = Argument(int, many=False)
+            b = Argument(int, many=True)
+            c = Argument(int, many=True)
+            d = Argument(int, many=False)
+
+        with self.assertRaises(ValueError):
+            Parser('1 2 3 4, 5', target=target)
 
     def test_valid(self):
         class Parser(ArgParser):
@@ -154,18 +203,26 @@ class TestDescriptorConfig(unittest.TestCase):
         return kwargs['missing'] is not MISSING and kwargs['default'] is MISSING
 
     def test_not_many_and_no_types(self):
-        for kwargs in dict_product(type=int, many=False, default=(None, 0, 1),
+        for kwargs in dict_product(type=int, many=False, default=(MISSING, None, 0, 1),
                                    missing=(MISSING, None, 2, 3), valid=(lambda v: v < 10, None)):
             if not self.illegal(kwargs):
                 class Parser(ArgParser):
                     arg = Argument(**kwargs)
+            else:
+                with self.assertRaises(ConfigError):
+                    class Parser(ArgParser):
+                        arg = Argument(**kwargs)
 
     def test_many_and_no_types(self):
-        for kwargs in dict_product(type=int, many=True, default=(None, [0, 1], [2, 3]),
+        for kwargs in dict_product(type=int, many=True, default=(MISSING, None, [0, 1], [2, 3]),
                                    missing=(MISSING, None, [3, 4], [4, 5]), valid=(lambda v: len(v) < 10, None)):
             if not self.illegal(kwargs):
                 class Parser(ArgParser):
                     arg = Argument(**kwargs)
+            else:
+                with self.assertRaises(ConfigError):
+                    class Parser(ArgParser):
+                        arg = Argument(**kwargs)
 
     def test_not_many_and_types(self):
         type_values = {bool: (False, True),
@@ -178,11 +235,15 @@ class TestDescriptorConfig(unittest.TestCase):
                        time: (time(22, 4, 5),)}
 
         for type, values in type_values.items():
-            for kwargs in dict_product(type=type, many=False, default=(None,) + values,
+            for kwargs in dict_product(type=type, many=False, default=(MISSING, None) + values,
                                        missing=(MISSING, None) + values, valid=(lambda v: v <= max(values), None)):
                 if not self.illegal(kwargs):
                     class Parser(ArgParser):
                         arg = Argument(**kwargs)
+                else:
+                    with self.assertRaises(ConfigError):
+                        class Parser(ArgParser):
+                            arg = Argument(**kwargs)
 
     def test_many_and_types(self):
         type_values = {bool: (False, True),
@@ -195,11 +256,15 @@ class TestDescriptorConfig(unittest.TestCase):
                        time: (time(22, 4, 5),)}
 
         for type, values in type_values.items():
-            for kwargs in dict_product(type=type, many=True, default=(None, values),
+            for kwargs in dict_product(type=type, many=True, default=(MISSING, None, values),
                                        missing=(MISSING, None, values), valid=(lambda v: len(v) == len(values), None)):
                 if not self.illegal(kwargs):
                     class Parser(ArgParser):
                         arg = Argument(**kwargs)
+                else:
+                    with self.assertRaises(ConfigError):
+                        class Parser(ArgParser):
+                            arg = Argument(**kwargs)
 
     def test_validation(self):
         """ very basic but a lot of combinations, mainly aiming for default and missing validation """
