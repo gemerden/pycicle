@@ -34,7 +34,7 @@ class Argument(object):
         time: (encode_time, parse_time),
     }
 
-    reserved = {'help'}
+    reserved = {'help', 'gui'}
 
     def __post_init__(self):
         """ mainly sets the encoders and decoders for the argument """
@@ -57,19 +57,19 @@ class Argument(object):
         if obj is None:
             return self
         try:
-            return obj.__dict__[self.name]
+            return obj._kwargs[self.name]
         except KeyError:
             return self.default  # can be MISSING
 
     def __set__(self, obj, value):
         """ see python descriptor documentation for the magic """
-        obj.__dict__[self.name] = self.validate(value)
+        obj._kwargs[self.name] = self.validate(value)
 
     def __delete__(self, obj):
         """ see python descriptor documentation for the magic """
-        obj.__dict__.pop(self.name, None)
+        obj._kwargs.pop(self.name, None)
 
-    def check_config(self, existing):
+    def validate_config(self, existing):
         """
         Called in __init_subclass__ of owner class because self.name must be set to give clearer error messages and
         python __set_name__ changes all exceptions to (somewhat vague) RuntimeError.
@@ -86,7 +86,7 @@ class Argument(object):
                 raise ConfigError(f"if 'missing' is defined, a default must also be defined in '{self.name}'")
             self.missing = self.validate(self.missing, _config=True)
 
-        existing_short_flags = set(a[0] for a in existing) | set(a[0] for a in self.reserved)
+        existing_short_flags = set(a[0] for a in existing)
         if self.flags[-1] in existing_short_flags:
             self.flags = self.flags[:-1]  # remove short flag
 
@@ -107,9 +107,11 @@ class Argument(object):
         return self._decode(value)
 
     def parse(self, value):
-        if self.missing is not MISSING and value is MISSING:
+        if value is MISSING:
+            if self.missing is MISSING:
+                raise ValueError(f"missing value for '{self.name}'")
             return self.missing
-        if value is MISSING or value is DEFAULT:
+        if value is DEFAULT:
             if self.default is MISSING:
                 raise ValueError(f"missing value for '{self.name}'")
             return self.default
@@ -120,7 +122,7 @@ class Argument(object):
         exception_class = ConfigError if _config else ValueError
         if value is MISSING:
             if not _config and self.default is MISSING:
-                raise ValueError(f"Argument value '{self.name}' is required")
+                raise ValueError(f"Argument value for '{self.name}' is required, because it has no default")
             return value
         if _config and value is None:
             return None
@@ -170,14 +172,8 @@ class Argument(object):
             return None
         return self.encode(value)
 
-    def check_required(self, obj):
-        """ raises exception if argument is required and no value is present """
-        value = self.__get__(obj)
-        if self.required and value is None and self.default is not None:
-            raise ValueError(f"missing required argument '{self.name}'")
 
-
-class ArgParser(Mapping):
+class ArgParser(object):
     """
     This class uses the arguments to parse and run the command line or start the GUI. A few notes:
      - The class itself stores the values for all the arguments. It subclasses Mapping and can be used
@@ -204,7 +200,8 @@ class ArgParser(Mapping):
         for c in reversed(cls.__mro__):
             for name, arg in vars(c).items():
                 if isinstance(arg, Argument):
-                    arg.check_config(arguments)  # see comment in 'check_config'
+                    arguments.pop(arg.name, None)
+                    arg.validate_config(arguments)  # see comment in 'validate_config'
                     arguments[arg.name] = arg  # overrides if already present
         return arguments
 
@@ -226,27 +223,26 @@ class ArgParser(Mapping):
 
         def get_args_kwargs(cmd_line):
             kwargs = {None: []}  # None key for positional arguments
-            current_name = None
+            current_name = None  # positionals come first on cmd line
             for flag_or_value in cmd_line:
-                if flag_or_value in flag_lookup:  # flagged
+                if flag_or_value in flag_lookup:  # flag found
                     current_name = flag_lookup[flag_or_value].name
-                    kwargs[current_name] = MISSING
-                elif current_name is not None:  # not flagged
+                    kwargs[current_name] = MISSING  # stays if no values are found
+                elif current_name is not None:  # value after flag
                     if arg_defs[current_name].many:
                         if kwargs[current_name] is MISSING:
-                            kwargs[current_name] = []
+                            kwargs[current_name] = []  # replace MISSING
                         kwargs[current_name].append(flag_or_value)
                     else:
-                        kwargs[current_name] = flag_or_value
-                else:  # positional argument
+                        kwargs[current_name] = flag_or_value  # replace MISSING
+                else:  # positional argument before any flags
                     kwargs[None].append(flag_or_value)
-            args = kwargs.pop(None)
-            return args, kwargs
+            return kwargs.pop(None), kwargs  # args, kwargs
 
         args, kwargs = get_args_kwargs(cmd_line)
 
         pos_arg_defs = [a for n, a in arg_defs.items() if n not in kwargs]
-        try:  # note: if args are empty, index error cannot occur
+        try:  # note: if len(args) == 0, index error cannot occur
             while len(args) and not pos_arg_defs[0].many:
                 kwargs[pos_arg_defs.pop(0).name] = args.pop(0)
             while len(args) and not pos_arg_defs[-1].many:
@@ -275,24 +271,13 @@ class ArgParser(Mapping):
                  args: Union[str, Sequence, Mapping, None] = None,  # representation of command line arguments
                  target: Callable = None,  # target callable
                  run_gui: bool = False):   # if True: start the parser as a GUI
+        self._kwargs = {}
         if run_gui:
             self._run_gui(target)
         else:
             self._parse_args(args)
             if target:
                 self(target)  # uses the __call__ method
-
-    def __len__(self) -> int:
-        """ return number of arguments """
-        return len(self._arguments)
-
-    def __iter__(self) -> Iterable:
-        """ iterates over argument names """
-        yield from self._arguments
-
-    def __getitem__(self, name: str):
-        """ returns value for argument 'name'"""
-        return self.__dict__[name]
 
     def _run_gui(self, target):
         """ starts the GUI """
@@ -311,19 +296,15 @@ class ArgParser(Mapping):
         if isinstance(args, str):
             args = [s.strip() for s in args.split()]
 
-        if '-h' in args or '--help' in args:
+        if '--help' in args:
             print(self._cmd_help())
         else:
             parsed = self._parse(args)
             self._update(parsed)
 
     def _update(self, kwargs):
-        """ refills self.__dict__ with validated values """
-        new_kwargs = {name: arg.default for name, arg in self._arguments.items()}
-        new_kwargs.update(self.__dict__)
-        new_kwargs.update(kwargs)
-        self.__dict__.clear()
-        for name, value in new_kwargs.items():
+        """ refills self._kwargs with validated values """
+        for name, value in kwargs.items():
             setattr(self, name, value)
 
     def _command(self, short=False, prog=False):
@@ -340,10 +321,8 @@ class ArgParser(Mapping):
         """ calls the target with the argument values """
         if target is None:
             raise ValueError(f"cannot call missing target")
-        for arg in self._arguments.values():
-            arg.check_required(self)
         self._parse(self._command())  # runs through the validation once again
-        return target(**self)  # call the target
+        return target(**self._kwargs)  # call the target
 
     def _save(self, filename: str, mode: str = 'w'):
         """ saves arguments as json to a file """
