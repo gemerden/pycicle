@@ -15,7 +15,7 @@ class TestArgParser(unittest.TestCase):
         class Parser(ArgParser):
             pass
 
-        Parser('-h')
+        Parser('--help')
         import subprocess
         subprocess.run(['python', __file__, "-h"])
 
@@ -87,6 +87,17 @@ class TestArgParser(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             Parser('1 2 3 4, 5', target=target)
+
+    def test_required(self):
+        class Parser(ArgParser):
+            a = Argument(int)
+            b = Argument(int, default=0)
+
+        Parser('-a 1')
+
+        with self.assertRaises(ValueError):
+            Parser('-b 1')
+
 
     def test_valid(self):
         class Parser(ArgParser):
