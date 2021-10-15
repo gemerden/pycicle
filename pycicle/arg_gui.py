@@ -115,8 +115,12 @@ class TkArgWrapper(object):
         self.help_button = None
         self.error = None
 
+    @property
+    def kwargs(self):  # to edit the actual args
+        return self.app.parser.kwargs
+
     def get_value(self):
-        value = getattr(self.app.parser, self.argument.name)
+        value = getattr(self.kwargs, self.argument.name)
         result = self.argument.encode(value)
         if self.argument.many:
             return ' '.join(result)
@@ -129,12 +133,12 @@ class TkArgWrapper(object):
             else:
                 value = self.argument.default
         else:
-            value = self.variable.get().strip(', ')
-            if self.argument.many is not False:
-                value = [v.strip() for v in value.split(' ') if v.strip()]
+            value = self.variable.get().strip()
+            if self.argument.many:
+                value = [v.strip() for v in value.split()]
 
         try:
-            setattr(self.app.parser, self.argument.name, value)
+            setattr(self.kwargs, self.argument.name, value)
         except Exception as e:  # to also catch TclError, ArgumentTypeError
             self.widget.config(highlightthickness=1,
                                highlightbackground="red",
@@ -151,7 +155,7 @@ class TkArgWrapper(object):
             return True
 
     def reset_value(self):
-        delattr(self.app.parser,
+        delattr(self.kwargs,
                 self.argument.name)
         if self.argument.missing is not MISSING:
             self.variable.set(False)
@@ -413,7 +417,7 @@ class ArgGui(BaseFrame):
 
     @property
     def arguments(self):
-        return self.parser._arguments.values()
+        return self.parser.arguments.values()
 
     def create_widgets(self):
         self.form = FormFrame(self)
@@ -429,7 +433,7 @@ class ArgGui(BaseFrame):
         return success
 
     def command(self, short):
-        return self.parser._command(short, prog=True)
+        return self.parser.command(short, prog=True, path=False)
 
     def run(self):
         if self.target is None:
@@ -445,20 +449,20 @@ class ArgGui(BaseFrame):
             if not self.filename:
                 self.save_as()
             else:
-                self.parser._save(self.filename)
+                self.parser.save(self.filename)
 
     def save_as(self):
         if self.synchronize():
             self.filename = asksaveasfilename(defaultextension=".json")
             if self.filename:
-                self.parser._save(self.filename)
+                self.parser.save(self.filename)
 
     def load(self):
         filename = askopenfilename(defaultextension=".json")
         if filename:
             self.filename = filename
             try:
-                self.parser = self.parser._load(self.filename)
+                self.parser = self.parser.load(self.filename)
             except Exception as e:
                 tk.messagebox.showerror("error while loading file",
                                      f"message: {str(e)}\n\nprobable cause:\n"

@@ -50,8 +50,8 @@ class TestArgParser(unittest.TestCase):
 
             cmd = make_test_command(Parser, kwargs)
             parser = Parser(cmd, target=asserter)
-            assert parser._command(short=False) == cmd
-            assert parser._command(short=True) == make_test_command(Parser, kwargs, short=True)
+            assert parser.command(short=False) == cmd
+            assert parser.command(short=True) == make_test_command(Parser, kwargs, short=True)
 
     def test_positionals(self):
         class Parser(ArgParser):
@@ -120,8 +120,8 @@ class TestArgParser(unittest.TestCase):
 
         parser = Parser('-n bob')
 
-        assert parser.name == 'bob'
-        assert parser.units == 3
+        assert parser.kwargs.name == 'bob'
+        assert parser.kwargs.units == 3
 
     def test_missing(self):
         class Parser(ArgParser):
@@ -130,13 +130,13 @@ class TestArgParser(unittest.TestCase):
 
         parser = Parser('--units')
 
-        assert parser.name == 'bob'
-        assert parser.units == 3
+        assert parser.kwargs.name == 'bob'
+        assert parser.kwargs.units == 3
 
         parser = Parser('--name')
 
-        assert parser.name == 'ann'
-        assert parser.units == 0
+        assert parser.kwargs.name == 'ann'
+        assert parser.kwargs.units == 0
 
         with self.assertRaises(ConfigError):
             class Parser(ArgParser):
@@ -151,16 +151,16 @@ class TestArgParser(unittest.TestCase):
             date_ = Argument(date, default=date(1999, 6, 8))
             time_ = Argument(time, default=time(12, 12, 12))
 
-        defaults = {name: arg.default for name, arg in Parser._arguments.items()}
+        defaults = {name: arg.default for name, arg in Parser.arguments.items()}
         asserter = args_asserter(**defaults)
 
         test_cmd = make_test_command(Parser, defaults)
         parser = Parser(test_cmd,
                         target=asserter)
-        assert test_cmd == parser._command()
+        assert test_cmd == parser.command()
 
         parser2 = Parser('', target=asserter)  # TODO: check when args is None
-        assert test_cmd == parser2._command()
+        assert test_cmd == parser2.command()
 
     def test_bool(self):
         class Parser(ArgParser):

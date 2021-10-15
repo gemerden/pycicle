@@ -1,4 +1,3 @@
-import json
 import os
 import sys
 
@@ -7,12 +6,16 @@ from datetime import datetime, timedelta, date, time
 from typing import Mapping, Callable, Union, Any, Sequence, Iterable
 
 from pycicle import arg_gui
-from pycicle.tools import MISSING, DEFAULT
+from pycicle.tools import MISSING, DEFAULT, get_entry_file
 from pycicle.parsers import parse_bool, encode_bool, encode_datetime, parse_datetime, encode_date, parse_date, \
     encode_time, parse_time, parse_timedelta, encode_timedelta
 
 
 class ConfigError(ValueError):
+    pass
+
+
+class MissingError(ValueError):
     pass
 
 
@@ -47,6 +50,18 @@ class Argument(object):
     def required(self):
         return self.default is MISSING
 
+    # @property
+    # def is_switch(self):
+    #     return self.type is bool and self.default is False
+    #
+    # def is_encoded(self, value):
+    #     if self.type is str:
+    #         if isinstance(value, str):
+    #             return False
+    #         raise ValueError(f"non-string value '{value}' for string attribute '{self.name}'")
+    #     else:
+    #         return isinstance(value, str)
+
     def __set_name__(self, cls, name):
         """ descriptor method to set the name to the attribute name in the owner class """
         self.name = name
@@ -57,17 +72,17 @@ class Argument(object):
         if obj is None:
             return self
         try:
-            return obj._kwargs[self.name]
+            return obj.__dict__[self.name]
         except KeyError:
             return self.default  # can be MISSING
 
     def __set__(self, obj, value):
         """ see python descriptor documentation for the magic """
-        obj._kwargs[self.name] = self.validate(value)
+        obj.__dict__[self.name] = self._validate(value)
 
     def __delete__(self, obj):
         """ see python descriptor documentation for the magic """
-        obj._kwargs.pop(self.name, None)
+        obj.__dict__.pop(self.name, None)
 
     def validate_config(self, existing):
         """
@@ -76,18 +91,17 @@ class Argument(object):
         """
         if self.name in self.reserved:
             raise ConfigError(f"Argument name '{self.name}' is reserved")
+
         if self.name.startswith('_'):
             raise ConfigError(f"Argument name '{self.name}' cannot start with an '_' (to prevent name conflicts)")
 
-        if self.default is not MISSING:
-            self.default = self.validate(self.default, _config=True)
-        if self.missing is not MISSING:
-            if self.default is MISSING:
-                raise ConfigError(f"if 'missing' is defined, a default must also be defined in '{self.name}'")
-            self.missing = self.validate(self.missing, _config=True)
+        self.default = self._validate_default_or_missing(self.default)
+        self.missing = self._validate_default_or_missing(self.missing)
 
-        existing_short_flags = set(a[0] for a in existing)
-        if self.flags[-1] in existing_short_flags:
+        if self.missing is not MISSING and self.default is MISSING:
+            raise ConfigError(f"if 'missing' is defined, 'default' must also be defined in '{self.name}'")
+
+        if any(self.flags[-1] == e[0] for e in existing):
             self.flags = self.flags[:-1]  # remove short flag
 
     def encode(self, value):
@@ -109,37 +123,52 @@ class Argument(object):
     def parse(self, value):
         if value is MISSING:
             if self.missing is MISSING:
-                raise ValueError(f"missing value for '{self.name}'")
+                raise MissingError(f"missing value for '{self.name}'")
             return self.missing
         if value is DEFAULT:
             if self.default is MISSING:
-                raise ValueError(f"missing value for '{self.name}'")
+                raise MissingError(f"missing value for '{self.name}'")
             return self.default
         return self.decode(value)
 
-    def validate(self, value, _config=False):
-        """ performs validation and decoding of argument values """
-        exception_class = ConfigError if _config else ValueError
-        if value is MISSING:
-            if not _config and self.default is MISSING:
-                raise ValueError(f"Argument value for '{self.name}' is required, because it has no default")
-            return value
-        if _config and value is None:
-            return None
-        if value is self.default is None:
-            return None
-        if self.many:
-            if not isinstance(value, Sequence):
-                raise exception_class(f"Argument value for '{self.name}' is not a list or tuple")
-            value = list(value)
+    def _basic_validate(self, value, exception_class):
+        def single_validate(value):  # for single values
+            if isinstance(value, self.type):
+                return value
+            else:
+                return self._decode(value)
+
         try:
-            if isinstance(value, str) or (self.many and all(isinstance(v, str) for v in value)):
-                value = self.decode(value)
+            if self.many:
+                if not isinstance(value, (list, tuple)):
+                    raise exception_class(f"Argument value for '{self.name}' is not a list or tuple")
+                value = list(map(single_validate, value))
+            else:
+                value = single_validate(value)
+
             if self.valid and not self.valid(value):
                 raise exception_class(f"Invalid value: {str(value)} for argument '{self.name}'")
-        except TypeError as e:
-            raise exception_class(str(e))
-        return value
+        except exception_class:
+            raise
+        except (TypeError, ValueError, AttributeError) as error:
+            raise exception_class(error)
+        else:
+            return value
+
+    def _validate_default_or_missing(self, value):
+        if value is None or value is MISSING:
+            return value
+        return self._basic_validate(value, exception_class=ConfigError)
+
+    def _validate(self, value):
+        """ performs validation and decoding of argument values """
+        if value is MISSING: # or (self.many and value == []):
+            if self.default is MISSING:
+                raise MissingError(f"Argument value for '{self.name}' is required, because it has no default")
+            return self.default
+        if value == self.default:
+            return value
+        return self._basic_validate(value, exception_class=ValueError)
 
     def _cmd_flag(self, short=False):
         """ return flag e.g. '--version', '-v' if short"""
@@ -165,66 +194,30 @@ class Argument(object):
             return ''
         return f"{self._cmd_flag(short)} {cmd_value}"
 
-    def to_json(self, obj):
-        """ creates json version of argument value """
-        value = self.__get__(obj)
-        if value is None:
-            return None
-        return self.encode(value)
 
-
-class ArgParser(object):
+class Kwargs(object):
     """
     This class uses the arguments to parse and run the command line or start the GUI. A few notes:
-     - The class itself stores the values for all the arguments. It subclasses Mapping and can be used
-     as keyword arguments for a function (e.g. func(**parser)),
+     - The class itself stores the values for all the arguments,
      - To enable this usage, all methods, class and other attributes start with an underscore,
-     - It partially uses the standard library argparse to run from the command line
-            (TODO: remove this dependency?)
-     - the parser can call a target callable: if parser = ArgParser(): parser(func)
-
     """
     _arguments = None  # set in __init_subclass__
-    _flag_lookup = None  # set in __init_subclass__
 
     def __init_subclass__(cls, **kwargs):
         """ mainly initialises the argparse.ArgumentParser and adds arguments to the parser """
         super().__init_subclass__(**kwargs)
-        cls._arguments = cls._get_arguments()
-        cls._flag_lookup = cls._create_flag_lookup()
-
-    @classmethod
-    def _get_arguments(cls):
-        """ gathers and validates the Argument descriptors """
-        arguments = {}  # dict to let subclasses override arguments
-        for c in reversed(cls.__mro__):
-            for name, arg in vars(c).items():
-                if isinstance(arg, Argument):
-                    arguments.pop(arg.name, None)
-                    arg.validate_config(arguments)  # see comment in 'validate_config'
-                    arguments[arg.name] = arg  # overrides if already present
-        return arguments
-
-    @classmethod
-    def _create_flag_lookup(cls):
-        flag_lookup = {}
-        for argument in cls._arguments.values():
-            for flag in argument.flags:
-                flag_lookup[flag] = argument
-        return flag_lookup
+        cls._arguments = {n: a for n, a in vars(cls).items() if isinstance(a, Argument)}
 
     @classmethod
     def _parse(cls, cmd_line):
         arg_defs = cls._arguments
-        flag_lookup = cls._flag_lookup
+        flag_lookup = {f: a for a in arg_defs.values() for f in a.flags}
 
-        if isinstance(cmd_line, str):
-            cmd_line = [s.strip() for s in cmd_line.split()]
-
-        def get_args_kwargs(cmd_line):
+        def get_args_kwargs(cmd_line_list):
+            """ gets args and kwargs in encoded (str) form """
             kwargs = {None: []}  # None key for positional arguments
             current_name = None  # positionals come first on cmd line
-            for flag_or_value in cmd_line:
+            for flag_or_value in cmd_line_list:
                 if flag_or_value in flag_lookup:  # flag found
                     current_name = flag_lookup[flag_or_value].name
                     kwargs[current_name] = MISSING  # stays if no values are found
@@ -239,96 +232,166 @@ class ArgParser(object):
                     kwargs[None].append(flag_or_value)
             return kwargs.pop(None), kwargs  # args, kwargs
 
+        def get_pos_kwargs(pos_args):
+            """ assigns positional string values to arguments """
+            pos_arg_defs = []
+            for name, arg_def in arg_defs.items():
+                if name in kwargs:
+                    break  # break on first key already present
+                pos_arg_defs.append(arg_def)
+
+            pos_kwargs = {}
+            try:  # note: if len(args) == 0, index error cannot occur
+                while len(pos_args) and not pos_arg_defs[0].many:  # from left
+                    pos_kwargs[pos_arg_defs.pop(0).name] = pos_args.pop(0)
+                while len(pos_args) and not pos_arg_defs[-1].many:  # from right
+                    pos_kwargs[pos_arg_defs.pop(-1).name] = pos_args.pop(-1)
+            except IndexError:
+                raise ValueError("too many positional arguments found")
+
+            if len(pos_args) and len(pos_arg_defs) == 1:  # remaining
+                pos_kwargs[pos_arg_defs[0].name] = pos_args
+            return pos_kwargs
+
+        if isinstance(cmd_line, str):
+            cmd_line = [s.strip() for s in cmd_line.split()]
+
         args, kwargs = get_args_kwargs(cmd_line)
+        kwargs.update(get_pos_kwargs(args))
+        return {n: a.parse(kwargs.get(n, DEFAULT)) for n, a in arg_defs.items()}
 
-        pos_arg_defs = [a for n, a in arg_defs.items() if n not in kwargs]
-        try:  # note: if len(args) == 0, index error cannot occur
-            while len(args) and not pos_arg_defs[0].many:
-                kwargs[pos_arg_defs.pop(0).name] = args.pop(0)
-            while len(args) and not pos_arg_defs[-1].many:
-                kwargs[pos_arg_defs.pop(-1).name] = args.pop(-1)
-        except IndexError:
-            raise ValueError("too many positional arguments found")
-
-        if len(args) and len(pos_arg_defs) == 1:
-            kwargs[pos_arg_defs[0].name] = args
-
-        return {n: arg.parse(kwargs.get(n, DEFAULT)) for n, arg in arg_defs.items()}
-
-    @classmethod
-    def _cmd_help(cls):
-        """ used by GUI to show help generated by argparse """
-        return ''  # TODO: implement
-
-    @classmethod
-    def _load(cls, filename: str, mode: str = 'r'):
-        """ used by GUI to load argument values from file """
-        with open(filename, mode) as f:
-            json_dict = json.load(f)
-        return cls({name: arg.decode(json_dict[name]) for name, arg in cls._arguments.items()})
-
-    def __init__(self,
-                 args: Union[str, Sequence, Mapping, None] = None,  # representation of command line arguments
-                 target: Callable = None,  # target callable
-                 run_gui: bool = False):   # if True: start the parser as a GUI
-        self._kwargs = {}
-        if run_gui:
-            self._run_gui(target)
+    def __init__(self, *cmd_line: str):
+        super().__init__()
+        if cmd_line:
+            self._update(self._parse(' '.join(cmd_line)))
         else:
-            self._parse_args(args)
-            if target:
-                self(target)  # uses the __call__ method
+            self._update(self._defaults())
 
-    def _run_gui(self, target):
-        """ starts the GUI """
-        arg_gui.ArgGui(parser=self, target=target).mainloop()
-
-    def _parse_args(self, args):
-        if args is None:
-            if "PYTEST_CURRENT_TEST" in os.environ:
-                args = sys.argv[1:]  # fix for running tests with pytest
-            else:
-                args = sys.argv
-        elif isinstance(args, Mapping):
-            self._update(args)
-            args = self._command()
-
-        if isinstance(args, str):
-            args = [s.strip() for s in args.split()]
-
-        if '--help' in args:
-            print(self._cmd_help())
-        else:
-            parsed = self._parse(args)
-            self._update(parsed)
+    def _defaults(self):
+        return {n: a.default for n, a in self._arguments.items() if a.default is not MISSING}
 
     def _update(self, kwargs):
-        """ refills self._kwargs with validated values """
+        """ fills self with values """
         for name, value in kwargs.items():
             setattr(self, name, value)
 
-    def _command(self, short=False, prog=False):
-        """ creates the command line that can be used to call the parser:
-            - short: short flags (e.g. -d),
-            - prog: called file from command line is included"""
-        cmds = [arg.cmd(self, short) for arg in self._arguments.values()]
-        arg_string = ' '.join(cmd for cmd in cmds if cmd)
-        if prog:
-            return f"{os.path.basename(sys.argv[0])} {arg_string}"
-        return arg_string
+    def _as_dict(self):
+        return self.__dict__.copy()
 
     def __call__(self, target: Callable) -> Any:
         """ calls the target with the argument values """
         if target is None:
             raise ValueError(f"cannot call missing target")
         self._parse(self._command())  # runs through the validation once again
-        return target(**self._kwargs)  # call the target
+        return target(**self.__dict__)  # call the target
 
-    def _save(self, filename: str, mode: str = 'w'):
-        """ saves arguments as json to a file """
-        json_dict = {name: arg.encode(getattr(self, name)) for name, arg in self._arguments.items()}
+    def _command(self, short=False, prog=False, path=True):
+        """ creates the command line that can be used to call the parser:
+            - short: short flags (e.g. -d) if possible,
+            - prog: called file from command line is included"""
+        cmds = [arg.cmd(self, short) for arg in self._arguments.values()]
+        cmd_line = ' '.join(cmd for cmd in cmds if cmd)
+        if prog:
+            return f"{get_entry_file(path)} {cmd_line}"
+        return cmd_line
+
+
+class ArgParser(object):
+    """
+    This class uses the arguments to parse and run the command line or start the GUI. A few notes:
+     - The class itself stores the values for all the arguments. It subclasses Mapping and can be used
+     as keyword arguments for a function (e.g. func(**parser)),
+     - To enable this usage, all methods, class and other attributes start with an underscore,
+     - the parser can call a target callable: if parser = ArgParser(): parser(func)
+
+    """
+    kwargs_class = None
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__()
+        cls.kwargs_class = cls._create_kwargs_class()
+        cls.arguments = cls.kwargs_class._arguments
+
+    @classmethod
+    def _create_kwargs_class(cls):
+        """ gathers and validates the Argument descriptors """
+        arguments = {}  # dict to let subclasses override arguments
+        for c in reversed(cls.__mro__):
+            for name, arg in vars(c).items():
+                if isinstance(arg, Argument):
+                    arguments.pop(arg.name, None)
+                    arg.validate_config(arguments)  # see comment in 'validate_config'
+                    arguments[arg.name] = arg  # overrides if already present
+        return type(cls.__name__ + 'Kwargs', (Kwargs,), arguments)
+
+    @classmethod
+    def cmd_line_help(cls):
+        """ used by GUI to show help generated by argparse """
+        return ''  # TODO: implement
+
+    @classmethod
+    def load(cls, filename: str, mode: str = 'r'):
+        """ used by GUI to load command line from file """
         with open(filename, mode) as f:
-            f.write(json.dumps(json_dict))
+            cmd_line = f.read()
+        return cls(cmd_line)
+
+    @classmethod
+    def _valid_cmd_line(cls, cmd_line):
+        if cmd_line is None:
+            if "PYTEST_CURRENT_TEST" in os.environ:
+                cmd_line = sys.argv[1:]  # fix for running tests with pytest
+            else:
+                cmd_line = sys.argv
+        else:
+            cmd_line = [s.strip() for s in cmd_line.split()]
+            if len(cmd_line):
+                entry_file = get_entry_file()
+                if cmd_line[0] == entry_file:
+                    return cmd_line[1:]
+        return cmd_line
+
+    def __init__(self,
+                 cmd_line: Union[str, None] = None,  # representation of command line arguments
+                 target: Callable = None,  # target callable
+                 run_gui: bool = False):  # if True: start the parser as a GUI
+
+        cmd_line = self._valid_cmd_line(cmd_line)
+        if '--help' in cmd_line:
+            print(self.cmd_line_help())
+        else:
+            if run_gui or '--gui' in cmd_line:
+                self.kwargs = self.kwargs_class()
+                self.run_gui(target)
+            else:
+                self.kwargs = self.kwargs_class(*cmd_line)
+                if target:
+                    self.kwargs(target)
+
+    def as_dict(self):
+        return self.kwargs._as_dict()
+
+    def command(self, short=False, prog=False, path=True):
+        return self.kwargs._command(short, prog, path)
+
+    def parse(self, *cmd_line):
+        self.kwargs._parse(*cmd_line)
+
+    def run_gui(self, target):
+        """ starts the GUI """
+        arg_gui.ArgGui(parser=self, target=target).mainloop()
+
+    def __call__(self, target):
+        if target is None:
+            raise ValueError(f"cannot call missing 'target'")
+        self.parse(self.command())  # run through the validation again
+        return target(**self.as_dict())
+
+    def save(self, filename: str, mode: str = 'w'):
+        """ saves command line to a file """
+        cmd_line = self.command()
+        with open(filename, mode) as f:
+            f.write(cmd_line)
 
 
 if __name__ == '__main__':

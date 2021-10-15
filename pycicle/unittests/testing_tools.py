@@ -52,7 +52,7 @@ def assert_product(parser_class, **iterators):
         asserter = args_asserter(**kwargs)
         test_cmd = make_test_command(parser_class, kwargs)
         parser = parser_class(test_cmd, target=asserter)
-        assert test_cmd == parser._command()
+        assert test_cmd == parser.command()
 
 
 if __name__ == '__main__':
