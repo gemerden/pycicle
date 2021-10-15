@@ -24,10 +24,9 @@ class Argument(object):
     type: Callable
     many: bool = False
     default: Any = MISSING
-    missing: Any = MISSING
     valid: Callable[[Any], bool] = None
     help: str = ""
-    name: Union[str, None] = None  # set in __set_name__
+    name: str = ""  # set in __set_name__
 
     type_codecs = {
         bool: (encode_bool, parse_bool),
@@ -47,23 +46,29 @@ class Argument(object):
         self.flags = None  # set in ArgParser.__init_subclass__
 
     @property
+    def full_name(self):
+        return f"{self.cls.__name__}.{self.name}"
+
+    @property
     def required(self):
         return self.default is MISSING
 
-    # @property
-    # def is_switch(self):
-    #     return self.type is bool and self.default is False
-    #
-    # def is_encoded(self, value):
-    #     if self.type is str:
-    #         if isinstance(value, str):
-    #             return False
-    #         raise ValueError(f"non-string value '{value}' for string attribute '{self.name}'")
-    #     else:
-    #         return isinstance(value, str)
+    def is_switch(self):
+        return self.type is bool and self.default is False  # so self.many must also be False
+
+    def is_encoded(self, value):
+        if value is MISSING or value is DEFAULT:
+            return True
+        if self.type is str:
+            if isinstance(value, str):
+                return False
+            raise ValueError(f"non-string value '{value}' for string attribute '{self.name}'")
+        else:
+            return isinstance(value, str)
 
     def __set_name__(self, cls, name):
         """ descriptor method to set the name to the attribute name in the owner class """
+        self.cls = cls
         self.name = name
         self.flags = ('--' + name, '-' + name[0])
 
@@ -78,7 +83,9 @@ class Argument(object):
 
     def __set__(self, obj, value):
         """ see python descriptor documentation for the magic """
-        obj.__dict__[self.name] = self._validate(value)
+        if self.is_encoded(value):
+            value = self.parse(value)
+        obj.__dict__[self.name] = self.validate(value)
 
     def __delete__(self, obj):
         """ see python descriptor documentation for the magic """
@@ -95,11 +102,7 @@ class Argument(object):
         if self.name.startswith('_'):
             raise ConfigError(f"Argument name '{self.name}' cannot start with an '_' (to prevent name conflicts)")
 
-        self.default = self._validate_default_or_missing(self.default)
-        self.missing = self._validate_default_or_missing(self.missing)
-
-        if self.missing is not MISSING and self.default is MISSING:
-            raise ConfigError(f"if 'missing' is defined, 'default' must also be defined in '{self.name}'")
+        self.default = self._validate_default(self.default)
 
         if any(self.flags[-1] == e[0] for e in existing):
             self.flags = self.flags[:-1]  # remove short flag
@@ -112,63 +115,54 @@ class Argument(object):
             return [self._encode(v) for v in value]
         return self._encode(value)
 
-    def decode(self, value):
+    def decode(self, string):
         """ creates value from str, takes 'many' into account """
-        if self.type is not str and value == '':
+        if self.type is not str and string == '':
             return self.default
         if self.many:
-            return [self._decode(v) for v in value]
-        return self._decode(value)
+            return [self._decode(v) for v in string.split()]
+        return self._decode(string)
 
     def parse(self, value):
-        if value is MISSING:
-            if self.missing is MISSING:
-                raise MissingError(f"missing value for '{self.name}'")
-            return self.missing
-        if value is DEFAULT:
+        if value is MISSING:  # but flag was there
+            if self.is_switch():
+                return True
+            raise MissingError(f"missing value for '{self.name}'")
+        if value is DEFAULT:  # flag was not there
             if self.default is MISSING:
                 raise MissingError(f"missing value for '{self.name}'")
             return self.default
         return self.decode(value)
 
-    def _basic_validate(self, value, exception_class):
-        def single_validate(value):  # for single values
-            if isinstance(value, self.type):
-                return value
-            else:
-                return self._decode(value)
-
-        try:
-            if self.many:
-                if not isinstance(value, (list, tuple)):
-                    raise exception_class(f"Argument value for '{self.name}' is not a list or tuple")
-                value = list(map(single_validate, value))
-            else:
-                value = single_validate(value)
-
-            if self.valid and not self.valid(value):
-                raise exception_class(f"Invalid value: {str(value)} for argument '{self.name}'")
-        except exception_class:
-            raise
-        except (TypeError, ValueError, AttributeError) as error:
-            raise exception_class(error)
-        else:
-            return value
-
-    def _validate_default_or_missing(self, value):
-        if value is None or value is MISSING:
-            return value
-        return self._basic_validate(value, exception_class=ConfigError)
+    def cast(self, value):
+        return value if type(value) is self.type else self.type(value)
 
     def _validate(self, value):
+        if self.many:
+            value = list(map(self.cast, value))
+        else:
+            value = self.cast(value)
+
+        if self.valid and not self.valid(value):
+            raise ValueError(f"Invalid value: {str(value)} for argument '{self.name}'")
+        return value
+
+    def validate(self, value):
         """ performs validation and decoding of argument values """
-        if value is MISSING: # or (self.many and value == []):
-            if self.default is MISSING:
-                raise MissingError(f"Argument value for '{self.name}' is required, because it has no default")
-            return self.default
-        if value == self.default:
+        if value is self.default is None:
+            return None
+        try:
+            return self._validate(value)
+        except (TypeError, ValueError, AttributeError) as error:
+            raise ValueError(f"error in '{self.name}' for value '{value}': " + str(error))
+
+    def _validate_default(self, value):
+        if value is None or value is MISSING:
             return value
-        return self._basic_validate(value, exception_class=ValueError)
+        try:
+            return self._validate(value)
+        except (TypeError, ValueError, AttributeError) as error:
+            raise ConfigError(f"error in '{self.full_name}' for default '{value}': " + str(error))
 
     def _cmd_flag(self, short=False):
         """ return flag e.g. '--version', '-v' if short"""
@@ -185,10 +179,10 @@ class Argument(object):
     def cmd(self, obj, short=False):
         """ creates command line part for this argument """
         value = self.__get__(obj)
-        if self.missing is not MISSING:
-            if value == self.missing:
+        if self.is_switch():
+            if value:
                 return self._cmd_flag(short)
-            return ''  # value will be the default
+            return ''
         cmd_value = self._cmd_value(value)
         if cmd_value == '':
             return ''
@@ -213,6 +207,9 @@ class Kwargs(object):
         arg_defs = cls._arguments
         flag_lookup = {f: a for a in arg_defs.values() for f in a.flags}
 
+        def reunite(kwarg_lists):
+            return {n: ' '.join(lst) if lst is not MISSING else lst for n, lst in kwarg_lists.items()}
+
         def get_args_kwargs(cmd_line_list):
             """ gets args and kwargs in encoded (str) form """
             kwargs = {None: []}  # None key for positional arguments
@@ -222,12 +219,9 @@ class Kwargs(object):
                     current_name = flag_lookup[flag_or_value].name
                     kwargs[current_name] = MISSING  # stays if no values are found
                 elif current_name is not None:  # value after flag
-                    if arg_defs[current_name].many:
-                        if kwargs[current_name] is MISSING:
-                            kwargs[current_name] = []  # replace MISSING
-                        kwargs[current_name].append(flag_or_value)
-                    else:
-                        kwargs[current_name] = flag_or_value  # replace MISSING
+                    if kwargs[current_name] is MISSING:
+                        kwargs[current_name] = []  # replace MISSING
+                    kwargs[current_name].append(flag_or_value)
                 else:  # positional argument before any flags
                     kwargs[None].append(flag_or_value)
             return kwargs.pop(None), kwargs  # args, kwargs
@@ -254,10 +248,11 @@ class Kwargs(object):
             return pos_kwargs
 
         if isinstance(cmd_line, str):
-            cmd_line = [s.strip() for s in cmd_line.split()]
+            cmd_line = cmd_line.split()
 
         args, kwargs = get_args_kwargs(cmd_line)
         kwargs.update(get_pos_kwargs(args))
+        kwargs = reunite(kwargs)
         return {n: a.parse(kwargs.get(n, DEFAULT)) for n, a in arg_defs.items()}
 
     def __init__(self, *cmd_line: str):

@@ -42,12 +42,6 @@ def default_str(arg):
     return arg.encode(arg.default)
 
 
-def missing_str(arg):
-    if arg.missing is MISSING:
-        return ''
-    return arg.encode(arg.missing)
-
-
 def _func_str(func):
     if not func:
         return 'none'
@@ -72,7 +66,6 @@ str_funcs = dict(
     many=many_str,
     required=req_str,
     default=default_str,
-    missing=missing_str,
     valid=valid_str,
 )
 

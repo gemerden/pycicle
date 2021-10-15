@@ -6,14 +6,17 @@ from tkinter.filedialog import asksaveasfilename, askopenfilename, askdirectory,
 from pycicle.basetypes import FileBase, FolderBase, ChoiceBase
 from pycicle.document import short_line
 from pycicle.help_tools import get_parser_help, get_argument_help
-from pycicle.tools import MISSING
+from pycicle.tools import DEFAULT
+
+
+YES, NO = 'yes', 'no'
 
 
 def many_column_string(arg):
     if arg.many is True:
-        return 'yes'
+        return YES
     if arg.many is False:
-        return 'no'
+        return NO
     return str(arg.many)  # in case of number
 
 
@@ -127,18 +130,8 @@ class TkArgWrapper(object):
         return result
 
     def sync_value(self, event=None):
-        if self.argument.missing is not MISSING:
-            if self.variable.get():
-                value = self.argument.missing
-            else:
-                value = self.argument.default
-        else:
-            value = self.variable.get().strip()
-            if self.argument.many:
-                value = [v.strip() for v in value.split()]
-
         try:
-            setattr(self.kwargs, self.argument.name, value)
+            setattr(self.kwargs, self.argument.name, self.variable.get().strip() or DEFAULT)
         except Exception as e:  # to also catch TclError, ArgumentTypeError
             self.widget.config(highlightthickness=1,
                                highlightbackground="red",
@@ -157,7 +150,7 @@ class TkArgWrapper(object):
     def reset_value(self):
         delattr(self.kwargs,
                 self.argument.name)
-        if self.argument.missing is not MISSING:
+        if self.argument.is_switch():
             self.variable.set(False)
         else:
             self.variable.set(self.get_value())
@@ -184,8 +177,8 @@ class TkArgWrapper(object):
         return self.help_button
 
     def _get_value_widget(self, master, **kwargs):
-        if self.argument.missing is not MISSING:
-            return self._get_missing_widget(master, **kwargs)
+        # if self.argument.missing is not MISSING:
+        #     return self._get_missing_widget(master, **kwargs)
         for cls, widget_getter in self.factory.items():
             if issubclass(self.argument.type, cls):
                 return widget_getter(master, **kwargs)
@@ -199,7 +192,7 @@ class TkArgWrapper(object):
 
     def _open_file_dialog(self):
         filetypes = [('', '.' + ext) for ext in self.argument.type.extensions]
-        if self.argument.many is not False:  # append in case of many
+        if self.argument.many:  # append in case of many
             filenames = askopenfilenames(filetypes=filetypes)
             self.variable.set(f"{self.variable.get()}, {', '.join(filenames)}")
         else:
@@ -209,32 +202,11 @@ class TkArgWrapper(object):
 
     def _open_folder_dialog(self):
         foldername = askdirectory(mustexist=self.argument.type.existing)
-        if self.argument.many is not False:  # append in case of many
+        if self.argument.many:  # append in case of many
             self.variable.set(f"{self.variable.get()}, {foldername}")
         else:
             self.variable.set(foldername)
         self.app.synchronize()
-
-    def _get_missing_widget(self, master, **kwargs):
-        self.variable = tk.BooleanVar(value=False)
-        widget = tk.Frame(master)
-        field = tk.Text(widget, height=1, **kwargs)
-        field.pack(side=tk.LEFT, fill=tk.X)
-        label = tk.Label(widget, text='include:')
-        label.pack(side=tk.LEFT)
-
-        def sync(sync_all=True):
-            if sync_all:
-                self.app.synchronize()
-            field.config(state=tk.NORMAL)
-            field.delete('1.0', tk.END)
-            field.insert(tk.END, self.get_value())
-            field.config(state=tk.DISABLED)
-
-        sync(sync_all=False)
-        check = tk.Checkbutton(widget, variable=self.variable, command=sync)
-        check.pack(side=tk.RIGHT, padx=(4, 0))
-        return widget
 
     def _get_dialog_value_widget(self, master, command, **kwargs):
         widget = tk.Frame(master=master)
@@ -275,7 +247,7 @@ class TkArgWrapper(object):
         return widget
 
     def _get_choice_value_widget(self, master, **kwargs):
-        if self.argument.many is not False:
+        if self.argument.many:
             return self._get_multi_choice_value_widget(master, **kwargs)
 
         values = list(self.argument.type.choices)
@@ -284,7 +256,7 @@ class TkArgWrapper(object):
     def _get_boolean_value_widget(self, master, **kwargs):
         if self.argument.many:
             return self._get_multi_choice_value_widget(master, **kwargs)
-        return self._get_base_choice_value_widget(master, values=['no', 'yes'], **kwargs)
+        return self._get_base_choice_value_widget(master, values=[NO, YES], **kwargs)
 
     def _get_multi_choice_value_widget(self, master, **kwargs):
         self.variable = tk.StringVar(value=self.get_value())
@@ -297,7 +269,7 @@ class TkArgWrapper(object):
             y = self.app.winfo_rooty() - 90
             show_multi_choice_dialog(self.app.master, title=f"{self.argument.name}",
                                      chosen=chosen, xy=(x, y))
-            self.variable.set(', '.join(choice for choice, boolean in chosen.items() if boolean))
+            self.variable.set(' '.join(choice for choice, boolean in chosen.items() if boolean))
             self.app.synchronize()
 
         return self._get_dialog_value_widget(master=master, command=show, **kwargs)
@@ -404,7 +376,6 @@ class ArgGui(BaseFrame):
     def __init__(self, parser, target):
         super().__init__(tk.Tk(), parser=parser, target=target)
         self.master.eval('tk::PlaceWindow . center')
-        self.synchronize()
 
     def _init(self, parser, target):
         self.parser = parser
