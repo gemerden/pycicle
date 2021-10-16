@@ -3,11 +3,11 @@ import sys
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, date, time
-from typing import Mapping, Callable, Union, Any, Sequence, Iterable
+from typing import Callable, Union, Any
 
-from pycicle import arg_gui
-from pycicle.tools import MISSING, DEFAULT, get_entry_file
-from pycicle.parsers import parse_bool, encode_bool, encode_datetime, parse_datetime, encode_date, parse_date, \
+from pycicle import cmd_gui
+from pycicle.tools.utils import MISSING, DEFAULT, get_entry_file
+from pycicle.tools.parsers import parse_bool, encode_bool, encode_datetime, parse_datetime, encode_date, parse_date, \
     encode_time, parse_time, parse_timedelta, encode_timedelta
 
 
@@ -79,17 +79,22 @@ class Argument(object):
         try:
             return obj.__dict__[self.name]
         except KeyError:
+            if self.default is not MISSING:
+                obj.__dict__[self.name] = self.default
+                return self.default
             raise AttributeError(f"'{self.cls.__name__}' has no attribute '{self.name}'")
 
     def __set__(self, obj, value):
         """ see python descriptor documentation for the magic """
         if self.is_encoded(value):
-            value = self.parse(value)
+            value = self.decode(value)
         obj.__dict__[self.name] = self.validate(value)
 
     def __delete__(self, obj):
         """ see python descriptor documentation for the magic """
         obj.__dict__.pop(self.name, None)
+        if self.default is not MISSING:
+            obj.__dict__[self.name] = self.default
 
     def validate_config(self, existing):
         """
@@ -130,7 +135,7 @@ class Argument(object):
             raise MissingError(f"missing value for '{self.name}'")
         if value is DEFAULT:  # flag was not there
             if self.default is MISSING:
-                raise MissingError(f"missing value for '{self.name}'")
+                raise MissingError(f"missing flag or value for '{self.name}'")
             return self.default
         return self.decode(value)
 
@@ -267,6 +272,9 @@ class Kwargs(object):
     def _as_dict(self):
         return self.__dict__.copy()
 
+    def _complete(self):
+        return all(hasattr(self, n) for n in self._arguments)
+
     def __call__(self, target: Callable) -> Any:
         """ calls the target with the argument values """
         if target is None:
@@ -278,11 +286,16 @@ class Kwargs(object):
         """ creates the command line that can be used to call the parser:
             - short: short flags (e.g. -d) if possible,
             - prog: called file from command line is included"""
-        cmds = [arg.cmd(self, short) for arg in self._arguments.values()]
-        cmd_line = ' '.join(cmd for cmd in cmds if cmd)
-        if prog:
-            return f"{get_entry_file(path)} {cmd_line}"
-        return cmd_line
+        try:
+            cmds = [arg.cmd(self, short) for arg in self._arguments.values()]
+        except AttributeError:
+            return None
+        else:
+            cmd_line = ' '.join(c for c in cmds if c)
+            if prog:
+                return f"{get_entry_file(path)} {cmd_line}"
+            return cmd_line
+
 
 
 class ArgParser(object):
@@ -315,7 +328,25 @@ class ArgParser(object):
 
     @classmethod
     def gui(cls, target=None):
-        return cls('--gui', target=target)
+        """ opens the GUI """
+        return cls(cmd_line='--gui', target=target)
+
+    @classmethod
+    def cmd(cls, target=None):
+        """ reads arguments from command line """
+        cls(cmd_line=None, target=target)
+
+    @classmethod
+    def parse(cls, *cmd_line, target=None):
+        """ parses a command line from python (e.g. tests) """
+        return cls(cmd_line=' '.join(cmd_line), target=target)
+
+    @classmethod
+    def load(cls, filename: str, target=None):
+        """ loads a command line from file """
+        with open(filename, 'r') as f:
+            cmd_line = f.read()
+        return cls.parse(cmd_line, target=target)
 
     @classmethod
     def cmd_line_help(cls):
@@ -323,61 +354,52 @@ class ArgParser(object):
         return ''  # TODO: implement
 
     @classmethod
-    def load(cls, filename: str, mode: str = 'r'):
-        """ used by GUI to load command line from file """
-        with open(filename, mode) as f:
-            cmd_line = f.read()
-        return cls(cmd_line)
-
-    @classmethod
     def _prep_cmd_line(cls, cmd_line):
         if cmd_line is None:
             if "PYTEST_CURRENT_TEST" in os.environ:
-                cmd_line = sys.argv[1:]  # fix for running tests with pytest
+                cmd_line_list = sys.argv[1:]  # fix for running tests with pytest
             else:
-                cmd_line = sys.argv
+                cmd_line_list = sys.argv
         else:
-            cmd_line = [s.strip() for s in cmd_line.split()]
-            if len(cmd_line):
-                entry_file = get_entry_file()
-                if cmd_line[0] == entry_file:
-                    cmd_line = cmd_line[1:]
-        return ' '.join(cmd_line)
+            cmd_line_list = cmd_line.split()
+
+        if len(cmd_line_list):
+            if cmd_line_list[0] == get_entry_file():
+                cmd_line_list.pop(0)
+        return ' '.join(cmd_line_list)
 
     def __init__(self,
-                 cmd_line: str,  # representation of command line arguments
+                 cmd_line: Union[str, None] = None,
                  target: Callable = None):
-
         cmd_line = self._prep_cmd_line(cmd_line)
         if '--help' in cmd_line:
             print(self.cmd_line_help())
+        elif '--gui' in cmd_line:
+            self.kwargs = self.kwargs_class()
+            self._run_gui(target)
         else:
-            if '--gui' in cmd_line:
-                self.kwargs = self.kwargs_class()
-                self._run_gui(target)
-            else:
-                self.kwargs = self.kwargs_class(cmd_line)
-                if target:
-                    self.kwargs(target)
+            self.kwargs = self.kwargs_class(cmd_line)
+            if target:
+                self.kwargs(target)
 
     def _run_gui(self, target):
         """ starts the GUI """
-        arg_gui.ArgGui(parser=self, target=target).mainloop()
+        cmd_gui.ArgGui(parser=self, target=target).mainloop()
 
-    def as_dict(self):
-        return self.kwargs._as_dict()
+    def complete(self):
+        return self.kwargs._complete()
 
     def command(self, short=False, prog=False, path=True):
         return self.kwargs._command(short, prog, path)
-
-    def parse(self, cmd_line):
-        self.kwargs._parse(cmd_line)
 
     def __call__(self, target):
         if target is None:
             raise ValueError(f"cannot call missing 'target'")
         self.parse(self.command())  # run through the validation again
         return target(**self.as_dict())
+
+    def as_dict(self):
+        return self.kwargs._as_dict()
 
     def save(self, filename: str, mode: str = 'w'):
         """ saves command line to a file """

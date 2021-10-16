@@ -105,20 +105,15 @@ parser = MyParser(target=printer)  # use the keyword 'target'
 Arguments can be configured with a number of options. Only `type` is required:
 
 - `type`: The type of the argument as used by the target. This can be `int, str, bool, float, datetime, date, time, timedelta`, but there are a few more (described below) and it is possible to create your own types,
-- `required` (default=False): whether a value is required on the command line. If `required=True`, the `default` is `None` and no value for the argument is specified, this will raise an exception,
 - `many` (default=False): whether one, a specific number or any number of values are expected, so:
   - `many=False` means there is a single value expected,
   - `many=True` means that any number of values is expected. They will be turned into a list,
-  - `many=N` (with `N` a positive integer) means that there are exactly n values expected, resulting in a list, even if `N` is 1,
   - Note: the `type` option above applies to the individual elements of the list,
-- `default` (default=None): a default value for the argument. It must be of type `type` or `None` (the default for the default ;-). This value will be used if no other value is given on the command line,
-- `novalue` (default=MISSING): if a value is given for `novalue`, this becomes the value used when the flag is present on the command line, but there is no value: e.g. `python prog.py --argname` (if the flag is not present, the default is used),
-- `positional` (default=False): whether the argument is positional, meaning it can be used without name or flag (e.g. no `-m` or `--my_argument` before the value). Positional argument must come before other arguments,
+- `default` (default=MISSING): a default value for the argument. It must be of type `type` or `None` (the default for the default ;-). This value will be used if no other value is given on the command line,
 - `valid` (default = None): an optional validator function for the argument value, allowing extra validation over the the typecheck based on `type`. A `None` value will not be validated,
-- `callback` (default=None): an optional callback that takes the value and the underlying namespace created by the parser as arguments and, for example, allows you to modify the namespace. This namespace will be used by the target as arguments,
 - `help`: (default=""): last but not least, a help string that will be shown when the user types `> python somefile.py -h` (or `--help`) and is show in the GUI via the `? ` buttons.
 
-Most inconsistencies between arguments will raise an exception, but some are impossible to track, like a `valid` function conflicting with the type.
+Most inconsistencies between arguments will raise an exception, but some are impossible to track, like a `valid` function conflicting with the type. This will raise an exception when running the script itself though.
 
 A fully configured Argument could look like this (but the defaults should keep most configurations shorter ;-):
 
@@ -135,9 +130,8 @@ class MyParser(ArgParser):
 
 The parser constructor has three arguments:
 
-- `args` (default=None): the argument values to be parsed, `args` will be explained below,
-- `target` (default=None): the user callable to be called with the argument values when the parser is done, or when the 'run' button in the GUI is clicked. When there is no target, arguments are parsed (validated), but nothin is run,
-- `use_gui`(default=True): if `use_gui` is True, and the parser is started with no arguments (so `args=None`), the GUI is started for the user to fill in the command line options.
+- `cmd_line` (str, default=""): the cmommand line to be parsed, `cmd_line` will be explained below,
+- `target` (callable, default=None): the user callable to be called with the argument values when the parser is done, or when the 'run' button in the GUI is clicked. When there is no target, arguments are parsed (validated), but nothin is run,
 
 The parser can get arguments in 2 ways: from the command line and in the python file where it is initialized. When the parser is initialized in the python file, there are 4 ways:
 
@@ -145,9 +139,7 @@ The parser can get arguments in 2 ways: from the command line and in the python 
    - With command line options (e.g. `> python start_server.py --host 10.0.0.127 --port 8080`) the parser will validate and run the target with the argument values, 
    - Without command line options (e.g. `> python start_server.py`) the GUI will be started (unless `use_gui` is set to False, then it will try to validate and run with the default values),
 2. With `args`  being the command line arguments, as either a string or a list of strings. This will validate and run the target (if given) with these options. Examples:
-   - As string in the python file: `parser=MyParser('--host 10.0.0.127 --port 8080')`, same as:
-   - A list of strings in the python file: `parser=MyParser(['--host', '10.0.0.127', '-port', '8080'])`,
-3. With `args` a dictionary of command line option values, e.g. `parser=MyParser({'host': '10.0.0.127', 'port': '8080'})`. This will also validate and run the target. 
+   - As string in the python file: `MyParser('--host 10.0.0.127 --port 8080')`, same as:
 
 Option 1 is intended for normal use. 2 and 3 are more for testing purposes.
 

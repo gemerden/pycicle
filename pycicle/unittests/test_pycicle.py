@@ -4,8 +4,8 @@ from datetime import datetime, timedelta, date, time
 
 from pycicle import ArgParser, Argument
 from pycicle import File, Folder, Choice
-from pycicle.arg_parser import ConfigError
-from pycicle.tools import MISSING
+from pycicle.cmd_parser import ConfigError
+from pycicle.tools.utils import MISSING
 from pycicle.unittests.testing_tools import dict_product, make_test_command, args_asserter, assert_product
 
 
@@ -15,7 +15,7 @@ class TestArgParser(unittest.TestCase):
         class Parser(ArgParser):
             pass
 
-        Parser('--help')
+        Parser.parse('--help')
         import subprocess
         subprocess.run(['python', __file__, "-h"])
 
@@ -29,7 +29,7 @@ class TestArgParser(unittest.TestCase):
         class Parser(ArgParser):
             arg = Argument(int)
 
-        Parser('--arg 1', target=target)
+        Parser.parse('--arg 1', target=target)
         assert result == {'arg': 1}
 
     def test_basic_keywords(self):
@@ -41,13 +41,13 @@ class TestArgParser(unittest.TestCase):
 
         asserter = args_asserter(default=0, valid=4, many=[1, 2])
 
-        parser = Parser('-v 4 -m 1 2', target=asserter)
+        parser = Parser.parse('-v 4 -m 1 2', target=asserter)
 
         for kwargs in dict_product(default=(-1, 0, 1), valid=(-1, 0, 1), many=([9, 11],)):
             asserter = args_asserter(**kwargs)
 
             cmd = make_test_command(Parser, kwargs)
-            parser = Parser(cmd, target=asserter)
+            parser = Parser.parse(cmd, target=asserter)
             assert parser.command(short=False) == cmd
             assert parser.command(short=True) == make_test_command(Parser, kwargs, short=True)
 
@@ -58,7 +58,7 @@ class TestArgParser(unittest.TestCase):
         def target(**kwargs):
             assert kwargs == dict(a=[1, 2, 3, 4])
 
-        Parser('1 2 3 4', target=target)
+        Parser.parse('1 2 3 4', target=target)
 
         class Parser(ArgParser):
             a = Argument(int, many=False)
@@ -68,14 +68,14 @@ class TestArgParser(unittest.TestCase):
         def target(**kwargs):
             assert kwargs == dict(a=1, b=[2, 3], c=4)
 
-        Parser('1 2 3 4', target=target)
+        Parser.parse('1 2 3 4', target=target)
 
         class Parser(ArgParser):
             b = Argument(int, many=True)
             c = Argument(int, many=True)
 
         with self.assertRaises(ValueError):
-            Parser('1 2', target=target)
+            Parser.parse('1 2', target=target)
 
         class Parser(ArgParser):
             a = Argument(int, many=False)
@@ -84,17 +84,17 @@ class TestArgParser(unittest.TestCase):
             d = Argument(int, many=False)
 
         with self.assertRaises(ValueError):
-            Parser('1 2 3 4, 5', target=target)
+            Parser.parse('1 2 3 4, 5', target=target)
 
     def test_required(self):
         class Parser(ArgParser):
             a = Argument(int)
             b = Argument(int, default=0)
 
-        Parser('-a 1')
+        Parser.parse('-a 1')
 
         with self.assertRaises(ValueError):
-            Parser('-b 1')
+            Parser.parse('-b 1')
 
     def test_valid(self):
         class Parser(ArgParser):
@@ -106,16 +106,16 @@ class TestArgParser(unittest.TestCase):
             cmd = make_test_command(Parser, kwargs)
             if kwargs['units'] < 0 or len(kwargs['name']) < 3:
                 with self.assertRaises(ValueError):
-                    Parser(cmd, target=asserter)
+                    Parser.parse(cmd, target=asserter)
             else:
-                Parser(cmd, target=asserter)
+                Parser.parse(cmd, target=asserter)
 
     def test_default(self):
         class Parser(ArgParser):
             name = Argument(str)
             units = Argument(int, default=3)
 
-        parser = Parser('-n bob')
+        parser = Parser.parse('-n bob')
 
         assert parser.kwargs.name == 'bob'
         assert parser.kwargs.units == 3
@@ -126,14 +126,14 @@ class TestArgParser(unittest.TestCase):
             y = Argument(bool, default=False)
             z = Argument(bool, default=None)
 
-        parser = Parser('-x')
+        parser = Parser.parse('-x')
 
         assert parser.kwargs.x is True
         assert parser.kwargs.y is False
         assert parser.kwargs.z is None
 
         with self.assertRaises(ValueError):
-            parser = Parser('-z')
+            parser = Parser.parse('-z')
 
     def test_datetime_types_and_defaults(self):
         from datetime import datetime, time, date, timedelta
@@ -148,11 +148,11 @@ class TestArgParser(unittest.TestCase):
         asserter = args_asserter(**defaults)
 
         test_cmd = make_test_command(Parser, defaults)
-        parser = Parser(test_cmd,
+        parser = Parser.parse(test_cmd,
                         target=asserter)
         assert test_cmd == parser.command()
 
-        parser2 = Parser('', target=asserter)  # TODO: check when args is None
+        parser2 = Parser.parse(target=asserter)
         assert test_cmd == parser2.command()
 
     def test_bool(self):
@@ -168,7 +168,7 @@ class TestArgParser(unittest.TestCase):
             one = Argument(int, default=1)
 
         asserter = args_asserter(one=1)
-        parser = Parser('', target=asserter)
+        parser = Parser.parse(target=asserter)
 
     def test_choice(self):
         class Parser(ArgParser):

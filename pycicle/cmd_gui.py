@@ -4,10 +4,10 @@ from tkinter import ttk
 from tkinter.filedialog import asksaveasfilename, askopenfilename, askdirectory, askopenfilenames
 
 from pycicle.basetypes import FileBase, FolderBase, ChoiceBase
-from pycicle.document import short_line
-from pycicle.help_tools import get_parser_help, get_argument_help
-from pycicle.tools import DEFAULT
-
+from pycicle.help_funcs import get_parser_help, get_argument_help
+from pycicle.tools.document import short_line
+from pycicle.tools.tktooltip import CreateToolTip
+from pycicle.tools.utils import MISSING
 
 YES, NO = 'yes', 'no'
 
@@ -37,6 +37,12 @@ def show_text_dialog(win, title, text, wh, xy):
     widget.pack(expand=True, fill=tk.BOTH, padx=10, pady=10)
     widget.insert(tk.END, text)
     widget.config(state=tk.DISABLED)
+
+
+class Button(tk.Button):
+    def tooltip(self, text):
+        CreateToolTip(self, text)
+        return self
 
 
 class BaseFrame(tk.Frame):
@@ -79,7 +85,7 @@ def show_multi_choice_dialog(win, title, chosen, xy, wh=None):
         chosen.update({choice: var.get() for choice, var in chosen_vars.items()})
         dialog.destroy()
 
-    ok_button = tk.Button(dialog, text='OK', command=on_ok, width=6)
+    ok_button = Button(dialog, text='OK', command=on_ok, width=6)
     ok_button.grid(row=len(chosen), column=1, padx=4, pady=5)
     dialog.wait_window()
 
@@ -123,29 +129,28 @@ class TkArgWrapper(object):
         return self.app.parser.kwargs
 
     def get_value(self):
-        value = getattr(self.kwargs, self.argument.name)
+        value = getattr(self.kwargs, self.argument.name, MISSING)
         result = self.argument.encode(value)
         if self.argument.many:
             return ' '.join(result)
         return result
 
-    def sync_value(self, event=None):
+    def set_value(self, event=None):
         try:
-            setattr(self.kwargs, self.argument.name, self.variable.get().strip() or DEFAULT)
-        except Exception as e:  # to also catch TclError, ArgumentTypeError
+            setattr(self.kwargs, self.argument.name, self.variable.get().strip())
+        except Exception as error:  # to also catch TclError, ArgumentTypeError
             self.widget.config(highlightthickness=1,
                                highlightbackground="red",
                                highlightcolor="red")
             self.help_button.config(fg='red')
-            self.error = str(e)
-            return False
+            self.error = str(error)
         else:
             # ttk widgets do not have 'highlightthickness', but comboboxes cannot accept invalid values
             if not isinstance(self.widget, ttk.Combobox):
                 self.widget.config(highlightthickness=0)
             self.help_button.config(fg='black')
             self.error = None
-            return True
+        return self.error is None
 
     def reset_value(self):
         delattr(self.kwargs,
@@ -173,7 +178,7 @@ class TkArgWrapper(object):
             show_text_dialog(self.app.master, title=f"help: {self.argument.name}",
                              text=help_text, wh=(w, h), xy=(x, y))
 
-        self.help_button = tk.Button(master, text='?', width=3, command=show, **kwargs)
+        self.help_button = Button(master, text='?', width=3, command=show, **kwargs)
         return self.help_button
 
     def _get_value_widget(self, master, **kwargs):
@@ -215,7 +220,7 @@ class TkArgWrapper(object):
         entry_field.bind('<KeyRelease>', self.app.synchronize)
         entry_field.pack(side=tk.LEFT, fill=tk.X)
 
-        file_button = tk.Button(widget, text='...', command=command, width=2)
+        file_button = Button(widget, text='...', command=command, width=2)
         file_button.pack(side=tk.RIGHT, fill=tk.X, padx=(4, 0))
         return widget
 
@@ -277,6 +282,39 @@ class TkArgWrapper(object):
 
 # ==================================================================
 
+class CommandFrame(BaseFrame):
+    def _init(self, **kwargs):
+        self.selected = {'min': False, 'dir': False}
+        self.texts = {'min': '><', 'dir': ' \\\\ '}
+        self.buttons = {}
+
+    def create_widgets(self):
+        def switch(name):
+            def inner():
+                selected = self.selected[name] = not self.selected[name]
+                self.buttons[name].config(relief=tk.SUNKEN if selected else tk.RAISED)
+                self.show_command()
+            return inner
+
+        def get_button(name):
+            return Button(self, text=self.texts[name], command=switch(name), font=self.norm_font)
+
+        for name in self.selected:
+            self.buttons[name] = get_button(name)
+            self.buttons[name].pack(side=tk.LEFT)
+
+        self.view = FittingText(self, width=80, height=1, font=self.norm_font)
+        self.view.pack(side=tk.LEFT, fill=tk.X, padx=5)
+
+    def show_command(self):
+        cmd = self.master.get_command(**self.selected)
+        self.view.config(state=tk.NORMAL)
+        self.view.delete(1.0, tk.END)
+        if cmd is not None:
+            self.view.insert(1.0, cmd)
+        self.view.config(state=tk.DISABLED)
+
+
 class FormFrame(BaseFrame):
     column_names = ('name', 'value', 'type', 'many', 'help')
 
@@ -289,7 +327,6 @@ class FormFrame(BaseFrame):
         self.wrappers = [TkArgWrapper(app=self.master,
                                       argument=arg)
                          for arg in self.master.arguments]
-        self.command_string_var = tk.StringVar()
         self.short = True  # switched before first use
 
     def _get_grid_kwargs(self, col_name):
@@ -314,32 +351,11 @@ class FormFrame(BaseFrame):
             for j, col_name in enumerate(self.column_names):
                 self._create_widget(col_name, wrapper).grid(row=i + 1, column=j,
                                                             **self._get_grid_kwargs(col_name))
-        self._create_command_bar()
 
     def _create_widget(self, col_name, wrapper=None):
         if wrapper is None:  # title row:
             return tk.Label(self, text=col_name, **self.head_kwargs)
         return wrapper.create_widget(self, name=col_name, **self._get_cell_kwargs(col_name))
-
-    def _create_command_bar(self):
-        self.cmd_button = tk.Button(self, text='-/--', command=self.switch_command, font=self.bold_font)
-        self.cmd_button.grid(row=len(self.wrappers) + 1, column=0)
-
-        self.cmd_view = FittingText(self, width=64, height=1, font=self.norm_font)
-        self.cmd_view.grid(row=len(self.wrappers) + 1, column=1, columnspan=3, sticky=tk.EW)
-
-    def switch_command(self):
-        self.short = not self.short
-        if not self.master.synchronize():
-            self.short = not self.short
-
-    def show_command(self, ok=True):
-        cmd = self.master.command(self.short)
-        self.cmd_view.config(state=tk.NORMAL)
-        self.cmd_view.delete(1.0, tk.END)
-        if ok:
-            self.cmd_view.insert(1.0, cmd)
-        self.cmd_view.config(state=tk.DISABLED)
 
 
 class ButtonBar(BaseFrame):
@@ -365,7 +381,7 @@ class ButtonBar(BaseFrame):
         kwargs = self.button_kwargs.copy()
         kwargs.update(command=getattr(self.master, name))
         kwargs.update(config or {'text': name.replace('_', ' ')})
-        button = tk.Button(master=self, **kwargs)
+        button = Button(master=self, **kwargs)
         button.grid(row=0, column=len(self.buttons), **self.grid_kwargs)
         return button
 
@@ -376,6 +392,7 @@ class ArgGui(BaseFrame):
     def __init__(self, parser, target):
         super().__init__(tk.Tk(), parser=parser, target=target)
         self.master.eval('tk::PlaceWindow . center')
+        self.master.after(100, self.command_frame.show_command)
 
     def _init(self, parser, target):
         self.parser = parser
@@ -393,23 +410,25 @@ class ArgGui(BaseFrame):
     def create_widgets(self):
         self.form = FormFrame(self)
         self.button_bar = ButtonBar(self)
+        self.command_frame = CommandFrame(self)
         self.form.grid(row=0, column=0, padx=2, pady=2)
+        self.command_frame.grid(row=1, column=0, padx=2, pady=2)
         self.button_bar.grid(row=2, column=0, padx=2, pady=2)
 
     def synchronize(self, event=None):
         success = True
         for wrapper in self.form.wrappers:
-            success &= wrapper.sync_value()
-        self.form.show_command(ok=success)
+            success &= wrapper.set_value()
+        self.command_frame.show_command()
         return success
 
-    def command(self, short):
-        return self.parser.command(short, prog=True, path=False)
+    def get_command(self, min, dir):
+        return self.parser.command(short=min, prog=True, path=dir)
 
     def run(self):
         if self.target is None:
             tk.messagebox.showinfo('nothing to run', 'no runnable target was configured for this app')
-        if self.synchronize():
+        elif self.synchronize():
             try:
                 self.parser(self.target)
             except Exception as e:
@@ -436,8 +455,8 @@ class ArgGui(BaseFrame):
                 self.parser = self.parser.load(self.filename)
             except Exception as e:
                 tk.messagebox.showerror("error while loading file",
-                                     f"message: {str(e)}\n\nprobable cause:\n"
-                                     f"file is incompatible with the configuration of the parser")
+                                        f"message: {str(e)}\n\nprobable cause:\n"
+                                        f"file is incompatible with the configuration of the parser")
             else:
                 self.form.destroy()
                 self.form = FormFrame(self)

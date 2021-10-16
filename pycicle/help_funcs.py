@@ -1,7 +1,7 @@
 import inspect
 
-from pycicle.tools import MISSING
-from pycicle.document import Document, Chapter, ItemList
+from pycicle.tools.utils import MISSING
+from pycicle.tools.document import Document, Chapter, ItemList
 
 
 def get_name(item):
