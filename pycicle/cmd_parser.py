@@ -117,7 +117,7 @@ class Argument(object):
         if value is None or value is MISSING:
             return ''
         if self.many:
-            return [self._encode(v) for v in value]
+            return ' '.join(self._encode(v) for v in value)
         return self._encode(value)
 
     def decode(self, string):
@@ -175,12 +175,6 @@ class Argument(object):
             return self.flags[0]
         return self.flags[1] if short else self.flags[0]
 
-    def _cmd_value(self, value):
-        """ creates command line version of value """
-        if self.many:
-            return ' '.join(self.encode(value))
-        return self.encode(value)
-
     def cmd(self, obj, short=False):
         """ creates command line part for this argument """
         value = self.__get__(obj)
@@ -188,7 +182,7 @@ class Argument(object):
             if value:
                 return self._cmd_flag(short)
             return ''
-        cmd_value = self._cmd_value(value)
+        cmd_value = self.encode(value)
         if cmd_value == '':
             return ''
         return f"{self._cmd_flag(short)} {cmd_value}"

@@ -40,6 +40,11 @@ def show_text_dialog(win, title, text, wh, xy):
 
 
 class Button(tk.Button):
+    def __init__(self, *args, tooltip=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if tooltip:
+            self.tooltip(tooltip)
+
     def tooltip(self, text):
         CreateToolTip(self, text)
         return self
@@ -129,15 +134,20 @@ class TkArgWrapper(object):
         return self.app.parser.kwargs
 
     def get_value(self):
-        value = getattr(self.kwargs, self.argument.name, MISSING)
-        result = self.argument.encode(value)
-        if self.argument.many:
-            return ' '.join(result)
-        return result
+        value = getattr(self.kwargs,
+                        self.argument.name,
+                        MISSING)
+        string = self.argument.encode(value)
+        if self.variable is None:
+            self.variable = tk.StringVar(value=string)
+        else:
+            self.variable.set(string)
 
     def set_value(self, event=None):
         try:
-            setattr(self.kwargs, self.argument.name, self.variable.get().strip())
+            setattr(self.kwargs,
+                    self.argument.name,
+                    self.variable.get().strip())
         except Exception as error:  # to also catch TclError, ArgumentTypeError
             self.widget.config(highlightthickness=1,
                                highlightbackground="red",
@@ -155,10 +165,7 @@ class TkArgWrapper(object):
     def reset_value(self):
         delattr(self.kwargs,
                 self.argument.name)
-        if self.argument.is_switch():
-            self.variable.set(False)
-        else:
-            self.variable.set(self.get_value())
+        self.get_value()
 
     def create_widget(self, master, name, **kwargs):
         if name == 'value':
@@ -178,7 +185,7 @@ class TkArgWrapper(object):
             show_text_dialog(self.app.master, title=f"help: {self.argument.name}",
                              text=help_text, wh=(w, h), xy=(x, y))
 
-        self.help_button = Button(master, text='?', width=3, command=show, **kwargs)
+        self.help_button = Button(master, text='?', width=3, command=show, tooltip='more info', **kwargs)
         return self.help_button
 
     def _get_value_widget(self, master, **kwargs):
@@ -190,9 +197,9 @@ class TkArgWrapper(object):
         return self._get_string_value_widget(master, **kwargs)
 
     def _get_string_value_widget(self, master, **kwargs):
-        self.variable = tk.StringVar(value=self.get_value())
+        self.get_value()
         widget = tk.Entry(master, textvariable=self.variable, **kwargs)
-        widget.bind('<KeyRelease>', self.app.synchronize)
+        widget.bind('<KeyRelease>', self.app.set_values)
         return widget
 
     def _open_file_dialog(self):
@@ -203,7 +210,7 @@ class TkArgWrapper(object):
         else:
             filename = askopenfilename(filetypes=filetypes)
             self.variable.set(filename)
-        self.app.synchronize()
+        self.app.set_values()
 
     def _open_folder_dialog(self):
         foldername = askdirectory(mustexist=self.argument.type.existing)
@@ -211,35 +218,35 @@ class TkArgWrapper(object):
             self.variable.set(f"{self.variable.get()}, {foldername}")
         else:
             self.variable.set(foldername)
-        self.app.synchronize()
+        self.app.set_values()
 
     def _get_dialog_value_widget(self, master, command, **kwargs):
         widget = tk.Frame(master=master)
 
         entry_field = tk.Entry(widget, textvariable=self.variable, **kwargs)
-        entry_field.bind('<KeyRelease>', self.app.synchronize)
+        entry_field.bind('<KeyRelease>', self.app.set_values)
         entry_field.pack(side=tk.LEFT, fill=tk.X)
 
-        file_button = Button(widget, text='...', command=command, width=2)
+        file_button = Button(widget, text='...', command=command, width=2, tooltip='select a file')
         file_button.pack(side=tk.RIGHT, fill=tk.X, padx=(4, 0))
         return widget
 
     def _get_file_value_widget(self, master, **kwargs):
-        self.variable = tk.StringVar(value=self.get_value())
+        self.get_value()
         return self._get_dialog_value_widget(master, command=self._open_file_dialog, **kwargs)
 
     def _get_folder_value_widget(self, master, **kwargs):
-        self.variable = tk.StringVar(value=self.get_value())
+        self.get_value()
         return self._get_dialog_value_widget(master, command=self._open_folder_dialog, **kwargs)
 
     def _get_base_choice_value_widget(self, master, values, **kwargs):
         def on_select(event):
             self.variable.set(widget.get())
-            self.app.synchronize()
+            self.app.set_values()
 
         if 'state' not in kwargs:
             kwargs['state'] = "readonly"
-        self.variable = tk.StringVar(value=self.get_value())
+        self.get_value()
         default = self.argument.encode(self.argument.default)
         if default in values:
             values.remove(default)
@@ -264,7 +271,7 @@ class TkArgWrapper(object):
         return self._get_base_choice_value_widget(master, values=[NO, YES], **kwargs)
 
     def _get_multi_choice_value_widget(self, master, **kwargs):
-        self.variable = tk.StringVar(value=self.get_value())
+        self.get_value()
         choices = list(self.argument.type.choices)
         chosen_values = set(c.strip() for c in self.variable.get().split(' '))
         chosen = {choice: (choice in chosen_values) for choice in choices}
@@ -275,7 +282,7 @@ class TkArgWrapper(object):
             show_multi_choice_dialog(self.app.master, title=f"{self.argument.name}",
                                      chosen=chosen, xy=(x, y))
             self.variable.set(' '.join(choice for choice, boolean in chosen.items() if boolean))
-            self.app.synchronize()
+            self.app.set_values()
 
         return self._get_dialog_value_widget(master=master, command=show, **kwargs)
 
@@ -284,8 +291,11 @@ class TkArgWrapper(object):
 
 class CommandFrame(BaseFrame):
     def _init(self, **kwargs):
-        self.selected = {'min': False, 'dir': False}
-        self.texts = {'min': '><', 'dir': ' \\\\ '}
+        self.selected = {'short': False, 'path': False}
+        self.kwargs = {'short': {'text': '><',
+                                 'tooltip': 'select to see command line with short flags (like -f)'},
+                       'path': {'text': ' \\\\ ',
+                                'tooltip': 'select to see command line with full path to python script'}}
         self.buttons = {}
 
     def create_widgets(self):
@@ -294,16 +304,17 @@ class CommandFrame(BaseFrame):
                 selected = self.selected[name] = not self.selected[name]
                 self.buttons[name].config(relief=tk.SUNKEN if selected else tk.RAISED)
                 self.show_command()
+
             return inner
 
         def get_button(name):
-            return Button(self, text=self.texts[name], command=switch(name), font=self.norm_font)
+            return Button(self, command=switch(name), font=self.norm_font, **self.kwargs[name])
 
         for name in self.selected:
             self.buttons[name] = get_button(name)
             self.buttons[name].pack(side=tk.LEFT)
 
-        self.view = FittingText(self, width=80, height=1, font=self.norm_font)
+        self.view = FittingText(self, width=72, height=1, font=self.norm_font)
         self.view.pack(side=tk.LEFT, fill=tk.X, padx=5)
 
     def show_command(self):
@@ -360,12 +371,12 @@ class FormFrame(BaseFrame):
 
 class ButtonBar(BaseFrame):
     button_configs = dict(
-        run=None,
-        save=None,
-        save_as=None,
-        load=None,
-        reset=None,
-        help={'text': '?', 'width': 3}
+        run={'tooltip': 'run the script with these command line arguments'},
+        save={'tooltip': 'save the command line to the same file'},
+        save_as={'tooltip': 'save the command line to file'},
+        load={'tooltip': 'load the command line from file'},
+        reset={'tooltip': 'reset all values to default or empty'},
+        help={'text': '?', 'width': 3, 'tooltip': 'docs on this program and its use'}
     )
 
     grid_kwargs = {'padx': 2, 'pady': 2}
@@ -378,9 +389,11 @@ class ButtonBar(BaseFrame):
         self.config(padx=5, pady=5)
 
     def get_button(self, name, config):
+        config = config.copy()
         kwargs = self.button_kwargs.copy()
         kwargs.update(command=getattr(self.master, name))
-        kwargs.update(config or {'text': name.replace('_', ' ')})
+        kwargs.update(text=config.pop(name, name.replace('_', ' ')))
+        kwargs.update(**config)
         button = Button(master=self, **kwargs)
         button.grid(row=0, column=len(self.buttons), **self.grid_kwargs)
         return button
@@ -409,46 +422,51 @@ class ArgGui(BaseFrame):
 
     def create_widgets(self):
         self.form = FormFrame(self)
-        self.button_bar = ButtonBar(self)
         self.command_frame = CommandFrame(self)
+        self.button_bar = ButtonBar(self)
         self.form.grid(row=0, column=0, padx=2, pady=2)
-        self.command_frame.grid(row=1, column=0, padx=2, pady=2)
+        self.command_frame.grid(row=1, column=0, padx=2, pady=8)
         self.button_bar.grid(row=2, column=0, padx=2, pady=2)
 
-    def synchronize(self, event=None):
+    def set_values(self, event=None):
         success = True
         for wrapper in self.form.wrappers:
             success &= wrapper.set_value()
         self.command_frame.show_command()
         return success
 
-    def get_command(self, min, dir):
-        return self.parser.command(short=min, prog=True, path=dir)
+    def get_values(self):
+        for wrapper in self.form.wrappers:
+            wrapper.get_value()
+        self.command_frame.show_command()
+
+    def get_command(self, short, path):
+        return self.parser.command(short=short, prog=True, path=path)
 
     def run(self):
         if self.target is None:
             tk.messagebox.showinfo('nothing to run', 'no runnable target was configured for this app')
-        elif self.synchronize():
+        elif self.set_values():
             try:
                 self.parser(self.target)
             except Exception as e:
                 tk.messagebox.showerror("error", str(e))
 
     def save(self):
-        if self.synchronize():
+        if self.set_values():
             if not self.filename:
                 self.save_as()
             else:
                 self.parser.save(self.filename)
 
     def save_as(self):
-        if self.synchronize():
-            self.filename = asksaveasfilename(defaultextension=".json")
+        if self.set_values():
+            self.filename = asksaveasfilename(defaultextension=".cl")
             if self.filename:
                 self.parser.save(self.filename)
 
     def load(self):
-        filename = askopenfilename(defaultextension=".json")
+        filename = askopenfilename(defaultextension=".cl")
         if filename:
             self.filename = filename
             try:
@@ -458,14 +476,12 @@ class ArgGui(BaseFrame):
                                         f"message: {str(e)}\n\nprobable cause:\n"
                                         f"file is incompatible with the configuration of the parser")
             else:
-                self.form.destroy()
-                self.form = FormFrame(self)
-                self.form.grid(row=0, column=0)
+                self.get_values()
 
     def reset(self):
         for wrapper in self.form.wrappers:
             wrapper.reset_value()
-        self.synchronize()
+        self.get_values()
 
     def help(self):
         help_text = get_parser_help(self.parser)

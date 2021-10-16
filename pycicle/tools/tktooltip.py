@@ -18,7 +18,8 @@ class CreateToolTip(object):
     create a tooltip for a given widget
     """
     waittime = 500  # miliseconds
-    wraplength = 200  # pixels
+    wraplength = 240  # pixels
+    offset = (20, -30)
 
     def __init__(self, widget, text='widget info'):
         self.widget = widget
@@ -49,8 +50,8 @@ class CreateToolTip(object):
     def showtip(self, event=None):
         x = y = 0
         x, y, cx, cy = self.widget.bbox("insert")
-        x += self.widget.winfo_rootx() + 25
-        y += self.widget.winfo_rooty() + 20
+        x += self.widget.winfo_rootx() + self.offset[0]
+        y += self.widget.winfo_rooty() + self.offset[1]
         # creates a toplevel window
         self.tw = tk.Toplevel(self.widget)
         # Leaves only the label and removes the app window

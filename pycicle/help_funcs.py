@@ -50,7 +50,9 @@ def _func_str(func):
         src = inspect.getsource(func)
         _, _, code = src.partition(':')
         return code.strip()
-    return getattr(func, '__doc__', name).strip()
+    if func.__doc__:
+        return f"{name}: {func.__doc__}"
+    return name
 
 
 def valid_str(arg):
