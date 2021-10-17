@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, date, time
 from typing import Callable, Union, Any
 
 from pycicle import cmd_gui
-from pycicle.tools.utils import MISSING, DEFAULT, get_entry_file
+from pycicle.tools.utils import MISSING, DEFAULT, get_entry_file, get_typed_class_attrs
 from pycicle.tools.parsers import parse_bool, encode_bool, encode_datetime, parse_datetime, encode_date, parse_date, \
     encode_time, parse_time, parse_timedelta, encode_timedelta
 
@@ -109,7 +109,7 @@ class Argument(object):
 
         self.default = self._validate_default(self.default)
 
-        if any(self.flags[-1] == e[0] for e in existing):
+        if any(self.flags[-1][1] == e[0] for e in existing):
             self.flags = self.flags[:-1]  # remove short flag
 
     def encode(self, value):
@@ -199,7 +199,11 @@ class Kwargs(object):
     def __init_subclass__(cls, **kwargs):
         """ mainly initialises the argparse.ArgumentParser and adds arguments to the parser """
         super().__init_subclass__(**kwargs)
-        cls._arguments = {n: a for n, a in vars(cls).items() if isinstance(a, Argument)}
+        valid_arguments = {}
+        for name, argument in get_typed_class_attrs(cls, Argument).items():
+            argument.validate_config(valid_arguments)
+            valid_arguments[name] = argument
+        cls._arguments = valid_arguments
 
     @classmethod
     def _parse(cls, cmd_line):
@@ -308,15 +312,8 @@ class CmdParser(object):
 
     @classmethod
     def _create_kwargs_class(cls):
-        """ gathers and validates the Argument descriptors """
-        arguments = {}  # dict to let subclasses override arguments
-        for c in reversed(cls.__mro__):
-            for name, arg in vars(c).items():
-                if isinstance(arg, Argument):
-                    arguments.pop(arg.name, None)
-                    arg.validate_config(arguments)  # see comment in 'validate_config'
-                    arguments[arg.name] = arg  # overrides if already present
-        return type(cls.__name__ + 'Kwargs', (Kwargs,), arguments)
+        """ copies arguments and creates new Kwargs class with these arguments """
+        return type(cls.__name__ + 'Kwargs', (Kwargs,), get_typed_class_attrs(cls, Argument))
 
     @classmethod
     def gui(cls, target=None):
