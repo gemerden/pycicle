@@ -109,7 +109,7 @@ Arguments can be configured with a number of options. Only `type` is required:
   - `many=False` means there is a single value expected,
   - `many=True` means that any number of values is expected. They will be turned into a list,
   - Note: the `type` option above applies to the individual elements of the list,
-- `default` (default=MISSING): a default value for the argument. It must be of type `type` or `None` (the default for the default ;-). This value will be used if no other value is given on the command line,
+- `default` (default=MISSING): a default value for the argument. It must be of type `type` or `None`. This value will be used if no other value is given on the command line,
 - `valid` (default = None): an optional validator function for the argument value, allowing extra validation over the the typecheck based on `type`. A `None` value will not be validated,
 - `help`: (default=""): last but not least, a help string that will be shown when the user types `> python somefile.py -h` (or `--help`) and is show in the GUI via the `? ` buttons.
 
