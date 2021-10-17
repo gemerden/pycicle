@@ -308,9 +308,9 @@ class CommandFrame(BaseFrame):
         self.selected = {'short': False, 'path': False, 'list': False}
         self.kwargs = {'short': {'text': '><',
                                  'tooltip': 'short: select to see command line with short flags (like -f)'},
-                       'path': {'text': ' \\\\ ',
+                       'path': {'text': '\\..\\',
                                 'tooltip': 'path: select to see command line with full path to python script'},
-                       'list': {'text': ' [] ',
+                       'list': {'text': '[..]',
                                 'tooltip': 'list: show the commands on the command line as a list'}}
         self.buttons = {}
 
