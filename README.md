@@ -21,17 +21,20 @@ To start a server you could configure the parser as follows:
 ```python
 # file: start_server.py (in this example)
 from somewhere import Server  # e.g. some webserver
-from pycicle import ArgParser, Argument, File, Choice
+from pycicle import CmdParser, Argument, File, Choice
+
 
 def is_valid_host(ip):
     """ roughly """
     parts = list(map(int, ip.split('.')))
     return all(0 <= p < 256 for p in parts)
 
+
 def is_valid_port(port):
     return 10 <= int(port) <= 9999
 
-class StartServer(ArgParser):
+
+class StartServer(CmdParser):
     """
     This is the help text for the GUI. It shows when pressing the '?' button at the bottom.
     """
@@ -48,9 +51,11 @@ class StartServer(ArgParser):
     logfile = Argument(File('.log'), required=False, default=None,
                        help='logfile for the server, log to stdout if none')
 
+
 if __name__ == '__main__':
     def start_server(proto, host, port, restart, debug, logfile=None):
         Server(proto=proto, host=host, port=port).run_forever(restart=restart, debug=debug, log=logfile)
+
 
     StartServer(target=start_server)
 ```
@@ -65,13 +70,14 @@ Allowing the user to configure the server with help and validation, run the serv
 
 ## Configuration
 
-To configure the command line options (and corresponding GUI) an object oriented approach is used. When creating a new parser, you inherit from the base class `ArgParser` and define arguments with the descriptor `Argument` (more about descriptors [here](https://docs.python.org/3/howto/descriptor.html#descriptor-protocol)):
+To configure the command line options (and corresponding GUI) an object oriented approach is used. When creating a new parser, you inherit from the base class `CmdParser` and define arguments with the descriptor `Argument` (more about descriptors [here](https://docs.python.org/3/howto/descriptor.html#descriptor-protocol)):
 
 ```python
 # prog.py
-from pycicle import ArgParser, Argument
+from pycicle import CmdParser, Argument
 
-class MyParser(ArgParser):
+
+class MyParser(CmdParser):
     arg = Argument(int, help='my new command line argument')
 ```
 
@@ -118,7 +124,7 @@ Most inconsistencies between arguments will raise an exception, but some are imp
 A fully configured Argument could look like this (but the defaults should keep most configurations shorter ;-):
 
 ```python
-class MyParser(ArgParser):
+class MyParser(CmdParser):
     my_argument = Argument(int, required=True, many=True, default=[1, 2, 3], novalue=[1, 1, 1],
                            positional=False,  valid=lambda v: v[0] == 1, callback=lambda v, ns: print(ns),
                            help='this is a pretty random argument')
