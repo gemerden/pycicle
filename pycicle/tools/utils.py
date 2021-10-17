@@ -1,7 +1,8 @@
 import inspect
 import os
 import sys
-from io import StringIO
+import io
+import traceback
 from contextlib import contextmanager
 
 MISSING = object()
@@ -9,16 +10,24 @@ DEFAULT = object()
 TRUE, FALSE = 'true', 'false'
 
 
+def traceback_string(exception):
+    return ''.join(traceback.format_tb(exception.__traceback__))
+
+
 @contextmanager
-def get_stdout():
-    original = sys.stdout
-    sys.stdout = StringIO()
+def redirect_output(target=None):
+    target = target or io.StringIO()
+    original = (sys.stdout,  sys.stderr)
+    sys.stdout, sys.stderr = (target, target)
     try:
-        yield lambda: string
-        string = sys.stdout.getvalue()
+        yield target
+    except BaseException as error:
+        target.write(traceback_string(error))
+        raise
     finally:
-        sys.stdout.close()
-        sys.stdout = original
+        sys.stdout, sys.stderr = original
+        if hasattr(target, 'close'):
+            target.close()
 
 
 def get_entry_file(path=True):

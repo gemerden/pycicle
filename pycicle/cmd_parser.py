@@ -43,7 +43,7 @@ class Argument(object):
         encode, decode = self.type_codecs.get(self.type, (None, None))
         self._encode = encode or str  # str is default
         self._decode = decode or self.type  # self.type is default (int('3') == 3)
-        self.flags = None  # set in ArgParser.__init_subclass__
+        self.flags = None  # set in CmdParser.__init_subclass__
 
     @property
     def full_name(self):
@@ -291,15 +291,13 @@ class Kwargs(object):
             return cmd_line
 
 
-
-class ArgParser(object):
+class CmdParser(object):
     """
     This class uses the arguments to parse and run the command line or start the GUI. A few notes:
      - The class itself stores the values for all the arguments. It subclasses Mapping and can be used
      as keyword arguments for a function (e.g. func(**parser)),
      - To enable this usage, all methods, class and other attributes start with an underscore,
-     - the parser can call a target callable: if parser = ArgParser(): parser(func)
-
+     - the parser can call a target callable: if parser = CmdParser(): parser(func)
     """
     kwargs_class = None
 

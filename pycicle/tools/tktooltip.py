@@ -48,13 +48,10 @@ class CreateToolTip(object):
             self.widget.after_cancel(id)
 
     def showtip(self, event=None):
-        x = y = 0
         x, y, cx, cy = self.widget.bbox("insert")
         x += self.widget.winfo_rootx() + self.offset[0]
         y += self.widget.winfo_rooty() + self.offset[1]
-        # creates a toplevel window
         self.tw = tk.Toplevel(self.widget)
-        # Leaves only the label and removes the app window
         self.tw.wm_overrideredirect(True)
         self.tw.wm_geometry("+%d+%d" % (x, y))
         label = tk.Label(self.tw, text=self.text, justify='left',

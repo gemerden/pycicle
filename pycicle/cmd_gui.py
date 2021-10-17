@@ -7,7 +7,7 @@ from pycicle.basetypes import FileBase, FolderBase, ChoiceBase
 from pycicle.help_funcs import get_parser_help, get_argument_help
 from pycicle.tools.document import short_line
 from pycicle.tools.tktooltip import CreateToolTip
-from pycicle.tools.utils import MISSING, TRUE, FALSE
+from pycicle.tools.utils import MISSING, TRUE, FALSE, redirect_output
 
 
 def many_column_string(arg):
@@ -46,6 +46,34 @@ class Button(tk.Button):
     def tooltip(self, text):
         CreateToolTip(self, text)
         return self
+
+
+class OutputDialog(tk.Toplevel):
+    '''A general class for redirecting I/O to this Text widget.'''
+
+    def __init__(self, master, title, xy, wh=None, fg='white', bg='black', font=('Helvetica', 9, 'bold')):
+        super().__init__(master)
+        self.title(title)
+        if wh:
+            self.geometry(f"{wh[0]}x{wh[1]}+{xy[0]}+{xy[1]}")
+        else:
+            self.geometry(f"+{xy[0]}+{xy[1]}")
+        self.text_area = tk.Text(self, fg=fg, bg=bg, font=font)
+        self.text_area.pack()
+
+    def write(self, string):
+        self.text_area.insert(tk.END, string)
+
+
+class FittingText(tk.Text):
+    def insert(self, *args, **kwargs):
+        result = super().insert(*args, **kwargs)
+        self.reset_height()
+        return result
+
+    def reset_height(self):
+        height = self.tk.call((self._w, "count", "-update", "-displaylines", "1.0", "end"))
+        self.configure(height=height)
 
 
 class BaseFrame(tk.Frame):
@@ -93,17 +121,6 @@ def show_multi_choice_dialog(win, title, chosen, xy, wh=None):
     dialog.wait_window()
 
 
-class FittingText(tk.Text):
-    def insert(self, *args, **kwargs):
-        result = super().insert(*args, **kwargs)
-        self.reset_height()
-        return result
-
-    def reset_height(self):
-        height = self.tk.call((self._w, "count", "-update", "-displaylines", "1.0", "end"))
-        self.configure(height=height)
-
-
 class TkArgWrapper(object):
     """
     'translation' class between parser arguments and the gui; e.g. responsible for creating widgets for different types
@@ -137,9 +154,8 @@ class TkArgWrapper(object):
                         MISSING)
         string = self.argument.encode(value)
         if self.variable is None:
-            self.variable = tk.StringVar(value=string)
-        else:
-            self.variable.set(string)
+            self.variable = tk.StringVar()
+        self.variable.set(string)
 
     def set_value(self, event=None):
         try:
@@ -160,7 +176,7 @@ class TkArgWrapper(object):
             self.error = None
         return self.error is None
 
-    def reset_value(self):
+    def del_value(self):
         delattr(self.kwargs,
                 self.argument.name)
         self.get_value()
@@ -415,6 +431,7 @@ class ArgGui(BaseFrame):
         icon = tk.PhotoImage(file=self.icon_file)
         self.master.iconphoto(False, icon)
         self.grid(row=0, column=0, padx=10, pady=5)
+        self.run_dialog = None
 
     @property
     def arguments(self):
@@ -428,6 +445,10 @@ class ArgGui(BaseFrame):
         self.command_frame.grid(row=1, column=0, padx=2, pady=8)
         self.button_bar.grid(row=2, column=0, padx=2, pady=2)
 
+    def create_run_window(self):
+        self.run_dialog = OutputDialog(self.master, title='output', xy=(400, 400))
+        return self.run_dialog
+
     def set_values(self, event=None):
         success = True
         for wrapper in self.form.wrappers:
@@ -440,7 +461,7 @@ class ArgGui(BaseFrame):
             wrapper.get_value()
         self.command_frame.show_command()
 
-    def get_command(self, short, path, list):
+    def get_command(self, short=False, path=False, list=False):
         cmd_line = self.parser.command(short=short, prog=True, path=path)
         if list:
             return str(cmd_line.split())
@@ -450,10 +471,10 @@ class ArgGui(BaseFrame):
         if self.target is None:
             tk.messagebox.showinfo('nothing to run', 'no runnable target was configured for this app')
         elif self.set_values():
-            try:
+            dialog = self.create_run_window()
+            with redirect_output(dialog):
+                print('running: ', self.get_command(), '\n')
                 self.parser(self.target)
-            except Exception as e:
-                tk.messagebox.showerror("error", str(e))
 
     def save(self):
         if self.set_values():
@@ -483,7 +504,7 @@ class ArgGui(BaseFrame):
 
     def reset(self):
         for wrapper in self.form.wrappers:
-            wrapper.reset_value()
+            wrapper.del_value()
         self.get_values()
 
     def help(self):

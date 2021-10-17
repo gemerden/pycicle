@@ -1,11 +1,11 @@
-from pycicle import ArgParser, Argument
+from pycicle import CmdParser, Argument
 from pycicle.basetypes import File, Choice
 
 if __name__ == '__main__':
     from datetime import time
 
 
-    class Parser(ArgParser):
+    class Parser(CmdParser):
         """
         this is the help text for the parser:
          - help

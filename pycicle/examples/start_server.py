@@ -1,4 +1,4 @@
-from pycicle import ArgParser, Argument, File, Choice
+from pycicle import CmdParser, Argument, File, Choice
 
 
 def is_valid_host(ip):
@@ -11,7 +11,7 @@ def is_valid_port(port):
     return 10 <= int(port) <= 9999
 
 
-class StartServer(ArgParser):
+class StartServer(CmdParser):
     """
     this is the help text for the parser:
      - help

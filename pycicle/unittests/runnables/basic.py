@@ -1,7 +1,7 @@
-from pycicle import ArgParser, Argument
+from pycicle import CmdParser, Argument
 
 
-class Parser(ArgParser):
+class Parser(CmdParser):
     aaa = Argument(str)
     bbb = Argument(str)
 
