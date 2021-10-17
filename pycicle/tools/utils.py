@@ -6,6 +6,7 @@ from contextlib import contextmanager
 
 MISSING = object()
 DEFAULT = object()
+TRUE, FALSE = 'true', 'false'
 
 
 @contextmanager

@@ -1,9 +1,11 @@
 from datetime import datetime, timedelta, time
 
+from pycicle.tools.utils import TRUE, FALSE
+
 
 def parse_bool(arg,
-               true_set=frozenset(('yes', 'true', 't', 'y', '1')),
-               false_set=frozenset(('no', 'false', 'f', 'n', '0'))):
+               true_set=frozenset((TRUE, 'yes', 'true', 't', 'y', '1')),
+               false_set=frozenset((FALSE, 'no', 'false', 'f', 'n', '0'))):
     if isinstance(arg, (bool, int)):
         return bool(arg)
     if arg.strip().lower() in true_set:
@@ -14,7 +16,7 @@ def parse_bool(arg,
 
 
 def encode_bool(val):
-    return 'yes' if val else 'no'
+    return TRUE if val else FALSE
 
 
 def encode_datetime(dt):

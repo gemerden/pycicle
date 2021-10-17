@@ -7,16 +7,14 @@ from pycicle.basetypes import FileBase, FolderBase, ChoiceBase
 from pycicle.help_funcs import get_parser_help, get_argument_help
 from pycicle.tools.document import short_line
 from pycicle.tools.tktooltip import CreateToolTip
-from pycicle.tools.utils import MISSING
-
-YES, NO = 'yes', 'no'
+from pycicle.tools.utils import MISSING, TRUE, FALSE
 
 
 def many_column_string(arg):
     if arg.many is True:
-        return YES
+        return TRUE
     if arg.many is False:
-        return NO
+        return FALSE
     return str(arg.many)  # in case of number
 
 
@@ -268,7 +266,7 @@ class TkArgWrapper(object):
     def _get_boolean_value_widget(self, master, **kwargs):
         if self.argument.many:
             return self._get_multi_choice_value_widget(master, **kwargs)
-        return self._get_base_choice_value_widget(master, values=[NO, YES], **kwargs)
+        return self._get_base_choice_value_widget(master, values=[FALSE, TRUE], **kwargs)
 
     def _get_multi_choice_value_widget(self, master, **kwargs):
         self.get_value()
@@ -291,11 +289,13 @@ class TkArgWrapper(object):
 
 class CommandFrame(BaseFrame):
     def _init(self, **kwargs):
-        self.selected = {'short': False, 'path': False}
+        self.selected = {'short': False, 'path': False, 'list': False}
         self.kwargs = {'short': {'text': '><',
-                                 'tooltip': 'select to see command line with short flags (like -f)'},
+                                 'tooltip': 'short: select to see command line with short flags (like -f)'},
                        'path': {'text': ' \\\\ ',
-                                'tooltip': 'select to see command line with full path to python script'}}
+                                'tooltip': 'path: select to see command line with full path to python script'},
+                       'list': {'text': ' [] ',
+                                'tooltip': 'list: show the commands on the command line as a list'}}
         self.buttons = {}
 
     def create_widgets(self):
@@ -440,8 +440,11 @@ class ArgGui(BaseFrame):
             wrapper.get_value()
         self.command_frame.show_command()
 
-    def get_command(self, short, path):
-        return self.parser.command(short=short, prog=True, path=path)
+    def get_command(self, short, path, list):
+        cmd_line = self.parser.command(short=short, prog=True, path=path)
+        if list:
+            return str(cmd_line.split())
+        return cmd_line
 
     def run(self):
         if self.target is None:
