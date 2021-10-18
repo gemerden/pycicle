@@ -154,8 +154,10 @@ class Argument(object):
 
     def validate(self, value):
         """ performs validation and decoding of argument values """
-        if value is self.default is None:
-            return None
+        if value is MISSING:
+            raise ValueError(f"error in '{self.name}': missing required value")
+        if value is self.default:
+            return value
         try:
             return self._validate(value)
         except (TypeError, ValueError, AttributeError) as error:
