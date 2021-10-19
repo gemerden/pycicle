@@ -1,12 +1,13 @@
 import os.path
 import tkinter as tk
+from collections import defaultdict
 from tkinter import ttk
 from tkinter.filedialog import asksaveasfilename, askopenfilename, askdirectory, askopenfilenames
 
 from pycicle.basetypes import FileBase, FolderBase, ChoiceBase
 from pycicle.help_funcs import get_parser_help, get_argument_help
 from pycicle.tools.document import short_line
-from pycicle.tools.parsers import parse_split, encode_split, recode_split, quotify
+from pycicle.tools.parsers import parse_split, encode_split, quotify
 from pycicle.tools.tktooltip import CreateToolTip
 from pycicle.tools.utils import MISSING, TRUE, FALSE, redirect_output
 
@@ -44,6 +45,22 @@ class TooltipMixin(object):
         self._tooltip.text = text
 
 
+class MultiBindMixin(object):
+    def __init__(self, *arg, **kwargs):
+        self._bindings = {}
+        super().__init__(*arg, **kwargs)
+
+    def bind(self, key, *funcs):
+        if key not in self._bindings:
+            self._bindings[key] = []
+
+            def call_bindings(event):
+                for callback in self._bindings[key]:
+                    callback(event)
+            super().bind(key, call_bindings)
+
+        self._bindings[key].extend(funcs)
+
 class Frame(TooltipMixin, tk.Frame):
     pass
 
@@ -58,6 +75,61 @@ class Entry(TooltipMixin, tk.Entry):
 
 class Combobox(TooltipMixin, ttk.Combobox):
     pass
+
+
+class Text(MultiBindMixin, TooltipMixin, tk.Text):
+    pass
+
+
+class FittingText(Text):
+    def __init__(self, *args, height=1, **kwargs):
+        super().__init__(*args, height=height, **kwargs)
+        self.bind('<KeyRelease>', self.refresh)
+
+    def _insert(self, *args, **kwargs):
+        super().insert(*args, **kwargs)
+
+    def _delete(self, *args, **kwargs):
+        super().delete(*args, **kwargs)
+
+    def _refill(self, text):
+        self._delete(1.0, tk.END)
+        self._insert(1.0, text)
+
+    def insert(self, *args, **kwargs):
+        self._insert(*args, **kwargs)
+        self.refresh()
+
+    def delete(self, start=1.0, end=tk.END):
+        self._delete(start, end)
+        self.refresh()
+
+    def refill(self, text):
+        self._refill(text)
+        self.refresh()
+
+    def get(self, start=1.0, end="end-1c"):
+        return super().get(start, end)
+
+    def refresh(self, event=None):
+        height = self.tk.call((self._w, "count", "-update", "-displaylines", "1.0", "end"))
+        self.configure(height=height)
+
+
+class FittingField(FittingText):
+    def __init__(self, *args, variable, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.var = variable
+        self.var.trace('w', lambda n, i, m, sv=self.var: self._refill(sv.get()))
+
+    def refill(self, text=None):
+        if text is None:
+            text = self.var.get().strip()
+        super().refill(text)
+
+    def refresh(self, event=None):
+        super().refresh(event)
+        self.var.set(self.get())
 
 
 class OutputDialog(tk.Toplevel):
@@ -76,17 +148,6 @@ class OutputDialog(tk.Toplevel):
 
     def write(self, string):
         self.text_area.insert(tk.END, string)
-
-
-class FittingText(tk.Text):
-    def insert(self, *args, **kwargs):
-        result = super().insert(*args, **kwargs)
-        self.reset_height()
-        return result
-
-    def reset_height(self):
-        height = self.tk.call((self._w, "count", "-update", "-displaylines", "1.0", "end"))
-        self.configure(height=height)
 
 
 class BaseFrame(Frame):
@@ -152,7 +213,7 @@ class ArgWrapper(object):
     def __init__(self, app, argument):
         self.app = app
         self.arg = argument
-        self.var = None
+        self.var = tk.StringVar()
         self.factory = {bool: self._get_choice_value_widget,
                         FileBase: self._get_file_value_widget,
                         FolderBase: self._get_folder_value_widget,
@@ -169,10 +230,7 @@ class ArgWrapper(object):
         value = getattr(self.kwargs,
                         self.arg.name,
                         MISSING)
-        string = self.arg.encode(value)
-        if self.var is None:
-            self.var = tk.StringVar()
-        self.var.set(string)
+        self.var.set(self.arg.encode(value))
 
     def set_value(self, event=None):
         try:
@@ -218,29 +276,29 @@ class ArgWrapper(object):
         return self.help_button
 
     def _get_value_widget(self, master, **kwargs):
-        self.get_value()
         for cls, widget_getter in self.factory.items():
             if issubclass(self.arg.type, cls):
                 self.widget = widget_getter(master, **kwargs)
                 break
         else:
             self.widget = self._get_string_value_widget(master, **kwargs)
+        self.get_value()
         return self.widget
 
     def _get_string_value_widget(self, master, **kwargs):
-        widget = Entry(master, textvariable=self.var, **kwargs)
+        widget = FittingField(master, variable=self.var, **kwargs)
         widget.bind('<KeyRelease>', self.set_value)
         return widget
 
     def _get_dialog_value_widget(self, master, command, **kwargs):
         widget = Frame(master=master)
 
-        entry_field = Entry(widget, textvariable=self.var, **kwargs)
-        entry_field.bind('<KeyRelease>', self.set_value)
-        entry_field.pack(side=tk.LEFT, fill=tk.X)
+        field = FittingField(widget, variable=self.var, **kwargs)
+        field.bind('<KeyRelease>', self.set_value)
+        field.pack(side=tk.LEFT, fill=tk.X)
 
-        file_button = Button(widget, text='...', command=command, tooltip=f"select {self.arg.type.__name__.lower()}")
-        file_button.pack(side=tk.RIGHT, fill=tk.X, padx=(4, 0))
+        button = Button(widget, text='...', command=command, tooltip=f"select {self.arg.type.__name__.lower()}")
+        button.pack(side=tk.RIGHT, fill=tk.X, padx=(4, 0))
         return widget
 
     def _get_file_value_widget(self, master, **kwargs):
