@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, time
-from functools import wraps
+from functools import wraps, partial
 
 from pycicle.tools.utils import TRUE, FALSE
 
@@ -143,11 +143,17 @@ def parse_split(string, delimiter='"'):
 
 
 def encode_split(strings, delimiter='"'):
-    def encode(string):
-        if string == '' or ' ' in string:
-            return f'{delimiter}{string}{delimiter}'
-        return string
-    return ' '.join(map(encode, strings))
+    return ' '.join(quotify(s, delimiter, char=' ') for s in strings)
+
+
+def quotify(string, delimiter='"', char=' '):
+    if not char or string == '' or char in string:
+        return f'{delimiter}{string}{delimiter}'
+    return string
+
+
+def recode_split(string, delimiter='"'):
+    return encode_split((quotify(s, delimiter) for s in parse_split(string, delimiter)), delimiter)
 
 
 if __name__ == '__main__':
