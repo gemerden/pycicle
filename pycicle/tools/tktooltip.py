@@ -33,15 +33,15 @@ class CreateToolTip(object):
 
     def enter(self, event=None):
         if self.text:
-            self.schedule()
+            self.schedule(event)
 
     def leave(self, event=None):
         self.unschedule()
         self.hidetip()
 
-    def schedule(self):
+    def schedule(self, event=None):
         self.unschedule()
-        self.id = self.widget.after(self.waittime, self.showtip)
+        self.id = self.widget.after(self.waittime, lambda: self.showtip(event))
 
     def unschedule(self):
         id = self.id
@@ -49,10 +49,9 @@ class CreateToolTip(object):
         if id:
             self.widget.after_cancel(id)
 
-    def showtip(self, event=None):
-        x, y, cx, cy = self.widget.bbox("insert")
-        x += self.widget.winfo_rootx() + self.offset[0]
-        y += self.widget.winfo_rooty() + self.offset[1]
+    def showtip(self, event):
+        x = event.x_root + self.offset[0]
+        y = event.y_root + self.offset[1]
         self.tw = tk.Toplevel(self.widget)
         self.tw.wm_overrideredirect(True)
         self.tw.wm_geometry("+%d+%d" % (x, y))
