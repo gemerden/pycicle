@@ -6,7 +6,7 @@ from tkinter.filedialog import asksaveasfilename, askopenfilename, askdirectory,
 from pycicle.basetypes import FileBase, FolderBase, ChoiceBase
 from pycicle.help_funcs import get_parser_help, get_argument_help
 from pycicle.tools.document import short_line
-from pycicle.tools.parsers import parse_split
+from pycicle.tools.parsers import parse_split, encode_split, recode_split, quotify
 from pycicle.tools.tktooltip import CreateToolTip
 from pycicle.tools.utils import MISSING, TRUE, FALSE, redirect_output
 
@@ -33,15 +33,15 @@ def show_text_dialog(win, title, text, wh, xy):
 class TooltipMixin(object):
     def __init__(self, *args, tooltip=None, **kwargs):
         super().__init__(*args, **kwargs)
-        self.tooltip(tooltip)
+        self._tooltip = CreateToolTip(self, tooltip)
 
+    @property
+    def tooltip(self):
+        return self._tooltip.text
+
+    @tooltip.setter
     def tooltip(self, text):
-        if text is not None:
-            CreateToolTip(self, text)
-
-    def config(self, tooltip=None, **kwargs):
-        super().config(**kwargs)
-        self.tooltip(tooltip)
+        self._tooltip.text = text
 
 
 class Frame(TooltipMixin, tk.Frame):
@@ -190,8 +190,8 @@ class ArgWrapper(object):
                 self.widget.config(highlightthickness=0)
             self.help_button.config(fg='black')
             self.error = None
-        self.widget.tooltip(self.error)
-        return self.error is None
+        self.widget.tooltip = self.error
+        return self.app.show_command()
 
     def del_value(self):
         delattr(self.kwargs,
@@ -239,7 +239,7 @@ class ArgWrapper(object):
         entry_field.bind('<KeyRelease>', self.set_value)
         entry_field.pack(side=tk.LEFT, fill=tk.X)
 
-        file_button = Button(widget, text='...', command=command, tooltip='select')
+        file_button = Button(widget, text='...', command=command, tooltip=f"select {self.arg.type.__name__.lower()}")
         file_button.pack(side=tk.RIGHT, fill=tk.X, padx=(4, 0))
         return widget
 
@@ -248,7 +248,7 @@ class ArgWrapper(object):
             filetypes = [('', '.' + ext) for ext in self.arg.type.extensions]
             if self.arg.many:  # append in case of many
                 filenames = askopenfilenames(filetypes=filetypes)
-                self.var.set(f"{self.var.get()} {' '.join(filenames)}")
+                self.var.set(f"{self.var.get()} {encode_split([quotify(f) for f in filenames])}")
             else:
                 filename = askopenfilename(filetypes=filetypes)
                 self.var.set(filename)
@@ -260,9 +260,9 @@ class ArgWrapper(object):
         def open_folder_dialog():
             foldername = askdirectory(mustexist=self.arg.type.existing)
             if self.arg.many:  # append in case of many
-                self.var.set(f"{self.var.get()} {foldername}")
+                self.var.set(f"{self.var.get()} {quotify(foldername)}")
             else:
-                self.var.set(foldername)
+                self.var.set(quotify(foldername))
             self.set_value()
 
         return self._get_dialog_value_widget(master, command=open_folder_dialog, **kwargs)
@@ -275,7 +275,7 @@ class ArgWrapper(object):
 
     def _get_single_choice_value_widget(self, master, choices, **kwargs):
         def on_select(event):
-            self.var.set(widget.get())
+            self.var.set(quotify(widget.get()))
             self.set_value()
 
         default = self.arg.encode(self.arg.default)
@@ -365,12 +365,13 @@ class CommandFrame(BaseFrame):
         self.command_view.pack(side=tk.LEFT, fill=tk.X, padx=5)
 
     def show_command(self):
-        cmd = self.master.command(**self.selected)
         self.command_view.config(state=tk.NORMAL)
         self.command_view.delete(1.0, tk.END)
+        cmd = self.master.command(**self.selected)
         if cmd is not None:
             self.command_view.insert(1.0, cmd)
         self.command_view.config(state=tk.DISABLED)
+        return cmd is not None  # success
 
 
 class ButtonBar(BaseFrame):
@@ -454,6 +455,9 @@ class ArgGui(BaseFrame):
         if list:
             return str(parse_split(cmd_line))
         return cmd_line
+
+    def show_command(self):
+        return self.command_frame.show_command()
 
     def check(self):
         self.set_values()
