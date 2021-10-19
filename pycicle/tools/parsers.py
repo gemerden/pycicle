@@ -1,6 +1,28 @@
 from datetime import datetime, timedelta, time
+from functools import wraps
 
 from pycicle.tools.utils import TRUE, FALSE
+
+
+class ParseError(ValueError):
+    pass
+
+
+def parse_error(on=True):
+    def parse_error(func):
+        if not on:
+            return func
+
+        @wraps(func)
+        def inner(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except (TypeError, ValueError) as error:
+                raise ParseError(str(error))
+
+        return inner
+
+    return parse_error
 
 
 def parse_bool(arg,
@@ -104,3 +126,33 @@ def string_to_datetime(string):
         return datetime.strptime(string, "%Y-%m-%dT%H:%M:%S.%fZ")
     except ValueError:
         return datetime.strptime(string, "%Y-%m-%dT%H:%M:%S")
+
+
+def parse_split(string, delimiter='"'):
+    strings = []
+    after = string
+    while len(after):
+        before, char, after = after.partition(delimiter)
+        strings.extend(before.split())
+        if char == delimiter:
+            between, char, after = after.partition(delimiter)
+            if char != delimiter:
+                raise ValueError(f"parsing error in 'parse_split()': unmatched quotes ({delimiter}) in '{string}'")
+            strings.append(between)
+    return strings
+
+
+def encode_split(strings, delimiter='"'):
+    def encode(string):
+        if string == '' or ' ' in string:
+            return f'{delimiter}{string}{delimiter}'
+        return string
+    return ' '.join(map(encode, strings))
+
+
+if __name__ == '__main__':
+    in_strings = ['', '  ', 'a', ' a', ' a  ', 'a b', 'a "b c" d', 'a "b " d', 'a "" b', '""']
+    for string in in_strings:
+        decoded = parse_split(string)
+        recoded = encode_split(decoded)
+        print(' > '.join([string, str(decoded), recoded]), 'DIFFERENT' if string != recoded else '')
