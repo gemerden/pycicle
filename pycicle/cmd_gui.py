@@ -6,6 +6,7 @@ from tkinter.filedialog import asksaveasfilename, askopenfilename, askdirectory,
 from pycicle.basetypes import FileBase, FolderBase, ChoiceBase
 from pycicle.help_funcs import get_parser_help, get_argument_help
 from pycicle.tools.document import short_line
+from pycicle.tools.parsers import parse_split
 from pycicle.tools.tktooltip import CreateToolTip
 from pycicle.tools.utils import MISSING, TRUE, FALSE, redirect_output
 
@@ -247,7 +248,7 @@ class ArgWrapper(object):
             filetypes = [('', '.' + ext) for ext in self.arg.type.extensions]
             if self.arg.many:  # append in case of many
                 filenames = askopenfilenames(filetypes=filetypes)
-                self.var.set(f"{self.var.get()} {', '.join(filenames)}")
+                self.var.set(f"{self.var.get()} {' '.join(filenames)}")
             else:
                 filename = askopenfilename(filetypes=filetypes)
                 self.var.set(filename)
@@ -289,7 +290,7 @@ class ArgWrapper(object):
         return widget
 
     def _get_multi_choice_value_widget(self, master, choices, **kwargs):
-        values = self.var.get().split(' ')
+        values = parse_split(self.var.get())
         chosen = {c: (c in values) for c in choices}
 
         def show():
@@ -297,7 +298,7 @@ class ArgWrapper(object):
             y = self.app.winfo_rooty() - 64
             show_multi_choice_dialog(self.app.master, title=f"{self.arg.name}",
                                      chosen=chosen, xy=(x, y))
-            self.var.set(' '.join(c for c, b in chosen.items() if b))
+            self.var.set(encode_split(c for c, b in chosen.items() if b))
             self.set_value()
 
         return self._get_dialog_value_widget(master, command=show, **kwargs)
@@ -451,7 +452,7 @@ class ArgGui(BaseFrame):
     def command(self, short=False, path=False, list=False):
         cmd_line = self.parser.command(short=short, prog=True, path=path)
         if list:
-            return str(cmd_line.split())
+            return str(parse_split(cmd_line))
         return cmd_line
 
     def check(self):

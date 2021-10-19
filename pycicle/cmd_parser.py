@@ -8,7 +8,7 @@ from typing import Callable, Union, Any
 from pycicle import cmd_gui
 from pycicle.tools.utils import MISSING, DEFAULT, get_entry_file, get_typed_class_attrs
 from pycicle.tools.parsers import parse_bool, encode_bool, encode_datetime, parse_datetime, encode_date, parse_date, \
-    encode_time, parse_time, parse_timedelta, encode_timedelta
+    encode_time, parse_time, parse_timedelta, encode_timedelta, parse_split, encode_split
 
 
 class ConfigError(ValueError):
@@ -117,7 +117,7 @@ class Argument(object):
         if value is None or value is MISSING:
             return ''
         if self.many:
-            return ' '.join(self._encode(v) for v in value)
+            return encode_split(self._encode(v) for v in value)
         return self._encode(value)
 
     def decode(self, string):
@@ -125,7 +125,7 @@ class Argument(object):
         if self.type is not str and string == '':
             return self.default
         if self.many:
-            return [self._decode(v) for v in string.split()]
+            return [self._decode(v) for v in parse_split(string)]
         return self._decode(string)
 
     def parse(self, value):
@@ -214,7 +214,7 @@ class Kwargs(object):
 
         def get_args_kwargs(cmd_line):
             """ gets args and kwargs in encoded (str) form """
-            cmd_line_list = cmd_line.split()
+            cmd_line_list = parse_split(cmd_line)
             kwargs = {None: []}  # None key for positional arguments
             current_name = None  # positionals come first on cmd line
             for flag_or_value in cmd_line_list:
@@ -248,7 +248,7 @@ class Kwargs(object):
 
         args, kwargs = get_args_kwargs(cmd_line)
         kwargs.update(get_positional_kwargs(args))
-        kwargs = {n: ' '.join(l) for n, l in kwargs.items()}
+        kwargs = {n: encode_split(l) for n, l in kwargs.items()}
         return {n: a.parse(kwargs.get(n, DEFAULT)) for n, a in arg_defs.items()}
 
     def __init__(self, cmd_line: str = '', **kwargs):
@@ -352,12 +352,12 @@ class CmdParser(object):
             else:
                 cmd_line_list = sys.argv
         else:
-            cmd_line_list = cmd_line.split()
+            cmd_line_list = parse_split(cmd_line)
 
         if len(cmd_line_list):
             if cmd_line_list[0] == get_entry_file():
                 cmd_line_list.pop(0)
-        return ' '.join(cmd_line_list)
+        return encode_split(cmd_line_list)
 
     def __init__(self,
                  cmd_line: Union[str, None] = None,
