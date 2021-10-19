@@ -4,7 +4,7 @@ from pycicle import CmdParser, Argument, File, Choice
 def is_valid_host(ip):
     """ roughly """
     parts = list(map(int, ip.split('.')))
-    return all(0 <= p < 256 for p in parts)
+    return len(parts) == 4 and all(0 <= p < 256 for p in parts)
 
 
 def is_valid_port(port):
