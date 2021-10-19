@@ -41,7 +41,7 @@ class TestArgParser(unittest.TestCase):
 
         asserter = args_asserter(default=0, valid=4, many=[1, 2])
 
-        parser = Parser.parse('-v 4 -m 1 2', target=asserter)
+        parser = Parser.parse('-v 4 -m "1" 2', target=asserter)
 
         for kwargs in dict_product(default=(-1, 0, 1), valid=(-1, 0, 1), many=([9, 11],)):
             asserter = args_asserter(**kwargs)

@@ -1,5 +1,7 @@
 from itertools import product
 
+from pycicle.tools.parsers import encode_split
+
 
 def yielder(arg):
     if isinstance(arg, str):
@@ -22,7 +24,7 @@ def make_test_command(parser_class, kwargs, short=False):
 
     def create_value(arg, value):
         if isinstance(value, (list, tuple)):
-            return ' '.join(arg._encode(v) for v in value)
+            return encode_split(arg._encode(v) for v in value)
         return arg.encode(value)
 
     cmd = ''
