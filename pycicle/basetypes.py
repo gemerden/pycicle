@@ -83,7 +83,7 @@ class ChoiceBase(object):
 def Choice(*choices):
     """ note that the class of the choices becomes a base class, e.g. issubclass(Choice(1,2,3), int) == True """
     if not len(choices):
-        raise ValueError(f"cannot define Choice without choices")
+        raise ValueError(f"cannot define Choice without any choices")
     if any(type(c) is not type(choices[0]) for c in choices):
         raise ValueError(f"all choices must be of same type")
     return type('Choice', (ChoiceBase, type(choices[0])), {'choices': choices})
