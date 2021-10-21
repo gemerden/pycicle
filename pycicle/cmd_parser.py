@@ -6,17 +6,10 @@ from datetime import datetime, timedelta, date, time
 from typing import Callable, Union, Any
 
 from pycicle import cmd_gui
+from pycicle.exceptions import ConfigError, ValidationError
 from pycicle.tools.utils import MISSING, DEFAULT, get_entry_file, get_typed_class_attrs
 from pycicle.tools.parsers import parse_bool, encode_bool, encode_datetime, parse_datetime, encode_date, parse_date, \
     encode_time, parse_time, parse_timedelta, encode_timedelta, parse_split, encode_split
-
-
-class ConfigError(ValueError):
-    pass
-
-
-class MissingError(ValueError):
-    pass
 
 
 @dataclass
@@ -86,9 +79,12 @@ class Argument(object):
 
     def __set__(self, obj, value):
         """ see python descriptor documentation for the magic """
-        if self.is_encoded(value):
-            value = self.decode(value)
-        obj.__dict__[self.name] = self.validate(value)
+        try:
+            if self.is_encoded(value):
+                value = self.decode(value)
+            obj.__dict__[self.name] = self.validate(value)
+        except (TypeError, ValueError, AttributeError) as error:
+            raise ValidationError(f"error in '{self.name}' for value '{value}': " + str(error))
 
     def __delete__(self, obj):
         """ see python descriptor documentation for the magic """
@@ -132,21 +128,21 @@ class Argument(object):
         if value == '':  # but flag was there
             if self.is_switch():
                 return True
-            raise MissingError(f"missing value for '{self.name}'")
+            raise ValidationError(f"missing value for '{self.name}'")
         if value is DEFAULT:  # flag was not there
             if self.default is MISSING:
-                raise MissingError(f"missing flag or value for '{self.name}'")
+                raise ValidationError(f"missing flag or value for '{self.name}'")
             return self.default
         return self.decode(value)
 
-    def cast(self, value):
-        return value if type(value) is self.type else self.type(value)
-
     def _validate(self, value):
+        def cast(value):
+            return value if type(value) is self.type else self.type(value)
+
         if self.many:
-            value = list(map(self.cast, value))
+            value = [cast(v) for v in value]
         else:
-            value = self.cast(value)
+            value = cast(value)
 
         if self.valid and not self.valid(value):
             raise ValueError(f"Invalid value: {str(value)} for argument '{self.name}'")
@@ -158,10 +154,7 @@ class Argument(object):
             raise ValueError(f"error in '{self.name}': missing required value")
         if value is self.default:
             return value
-        try:
-            return self._validate(value)
-        except (TypeError, ValueError, AttributeError) as error:
-            raise ValueError(f"error in '{self.name}' for value '{value}': " + str(error))
+        return self._validate(value)
 
     def _validate_default(self, value):
         if value is None or value is MISSING:

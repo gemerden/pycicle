@@ -73,9 +73,9 @@ str_funcs = dict(
 
 
 def get_parser_help(parser, **kwargs):
-    option_help = ItemList(items={arg.name: arg.help for arg in parser._arguments.values() if arg.help},
+    option_help = ItemList(items={arg.name: arg.help for arg in parser.arguments.values() if arg.help},
                            extra='\nMore help can be found under the help buttons next to the options.')
-    command_help = f"current: {parser._command(prog=True)}\n\n{parser._cmd_help()}"
+    command_help = f"current: {parser.command(prog=True)}\n\n{parser.cmd_line_help()}"
     chapters = [Chapter('Option Help', content=option_help('-'))(**kwargs),
                 Chapter('Command Line', content=command_help)(**kwargs)]
     document = Document(title=type(parser).__name__,
@@ -89,7 +89,7 @@ def get_argument_help(argument, error=None, **kwargs):
     chapters = [Chapter('Help', content=argument.help)(**kwargs),
                 Chapter('Specifications', content=arg_specs(''))(**kwargs)]
     if error:
-        chapters.append(Chapter('ERROR', content=str(error))(**kwargs))
+        chapters.insert(0, Chapter('ERROR', content=str(error))(**kwargs))
     document = Document(title=f"Option: {argument.name}",
                         intro=f"details of '{argument.name}'",
                         chapters=chapters)

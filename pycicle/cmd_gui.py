@@ -1,10 +1,10 @@
 import os.path
 import tkinter as tk
-from collections import defaultdict
 from tkinter import ttk
 from tkinter.filedialog import asksaveasfilename, askopenfilename, askdirectory, askopenfilenames
 
 from pycicle.basetypes import FileBase, FolderBase, ChoiceBase
+from pycicle.exceptions import ValidationError
 from pycicle.help_funcs import get_parser_help, get_argument_help
 from pycicle.tools.document import short_line
 from pycicle.tools.parsers import parse_split, encode_split, quotify
@@ -42,6 +42,7 @@ class TooltipMixin(object):
 
     @tooltip.setter
     def tooltip(self, text):
+        # if text is None, no tooltip will be shown
         self._tooltip.text = text
 
 
@@ -237,11 +238,11 @@ class ArgWrapper(object):
             setattr(self.kwargs,
                     self.arg.name,
                     self.var.get().strip())
-        except Exception as error:  # to also catch TclError, ArgumentTypeError
+        except ValidationError as error:
             if not isinstance(self.widget, ttk.Combobox):
                 self.widget.config(**self.alert_config)
             self.help_button.config(fg='red')
-            self.error = str(error)
+            self.error = error.gui_message()
         else:
             # ttk widgets do not have 'highlightthickness', but comboboxes cannot accept invalid values
             if not isinstance(self.widget, ttk.Combobox):
@@ -249,12 +250,14 @@ class ArgWrapper(object):
             self.help_button.config(fg='black')
             self.error = None
         self.widget.tooltip = self.error
-        return self.app.show_command()
+        self.app.show_command()
+        return self.error is None
 
     def del_value(self):
         delattr(self.kwargs,
                 self.arg.name)
         self.get_value()
+        self.set_value()  # update gui
 
     def create_widget(self, master, name, **kwargs):
         if name == 'value':
@@ -394,7 +397,7 @@ class FormFrame(BaseFrame):
 class CommandFrame(BaseFrame):
     button_configs = {'short': {'text': '><',
                                 'tooltip': 'short: select to see command line with short flags (like -f)'},
-                      'path': {'text': '\\..\\',
+                      'path': {'text': '.\\.\\.',
                                'tooltip': 'path: select to see command line with full path to python script'},
                       'list': {'text': '[..]',
                                'tooltip': 'list: show the commands on the command line as a list'}}

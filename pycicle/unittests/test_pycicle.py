@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, date, time
 
 from pycicle import CmdParser, Argument
 from pycicle import File, Folder, Choice
-from pycicle.cmd_parser import ConfigError
+from pycicle.exceptions import ConfigError
 from pycicle.tools.utils import MISSING
 from pycicle.unittests.testing_tools import dict_product, make_test_command, args_asserter, assert_product
 
