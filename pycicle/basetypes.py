@@ -6,7 +6,7 @@ class FileFolderBase(str):
     does_exist = None  # function to test for existence, implemented in subclasses
 
     @classmethod
-    def string(cls):
+    def string(cls, short=False):
         raise NotImplementedError
 
     def __new__(cls, string=''):
@@ -35,7 +35,9 @@ class FileBase(FileFolderBase):
         cls.extensions = tuple(extensions)
 
     @classmethod
-    def string(cls):
+    def string(cls, short=False):
+        if short:
+            return cls.__name__
         if cls.extensions:
             return f"File({', '.join(cls.extensions)}, existing={cls.existing})"
         return f"File(existing={cls.existing})"
@@ -51,7 +53,9 @@ class FolderBase(FileFolderBase):
     does_exist = Path.is_dir
 
     @classmethod
-    def string(cls):
+    def string(cls, short=False):
+        if short:
+            return cls.__name__
         return f"Folder(existing={cls.existing})"
 
 
@@ -67,8 +71,10 @@ class ChoiceBase(object):
     choices = ()  # defined in def Choice() below
 
     @classmethod
-    def string(cls):
-        return f"Choice({', '.join(map(str, cls.choices))})"
+    def string(cls, short=False):
+        if short:
+            return ' | '.join(map(str, cls.choices))
+        return f"Choice({' | '.join(map(str, cls.choices))})"
 
     def __new__(cls, value=None):
         if value is None:
@@ -87,6 +93,13 @@ def Choice(*choices):
     if any(type(c) is not type(choices[0]) for c in choices):
         raise ValueError(f"all choices must be of same type")
     return type('Choice', (ChoiceBase, type(choices[0])), {'choices': choices})
+
+
+def get_type_string(type, short=False):
+    try:
+        return type.string(short)
+    except AttributeError:
+        return type.__name__ if short else type.__qualname__
 
 
 if __name__ == '__main__':

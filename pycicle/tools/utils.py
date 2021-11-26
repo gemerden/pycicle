@@ -49,3 +49,4 @@ def get_typed_class_attrs(cls, base):
 if __name__ == '__main__':
     print(get_entry_file(True))
     print(get_entry_file(False))
+

@@ -12,18 +12,20 @@ class BaseString(object):
 
 
 class Document(BaseString):
-    template = "\n{title}\n{separator}\n{intro}\n\n{chapters}\n"
+    template = "\n{title}\n{separator}\n{intro}\n\n{chapters}\n{extro}"
 
-    def __init__(self, title, intro, chapters):
+    def __init__(self, title, intro, chapters, extro=None):
         self.title = title
         self.intro = intro
         self.chapters = chapters
+        self.extro = extro
 
     def __call__(self, start='   ', separator=long_line):
         document = self.template.format(title=self.title,
                                         separator=separator,
                                         intro=self.intro,
-                                        chapters='\n'.join(self.chapters))
+                                        chapters='\n'.join(self.chapters),
+                                        extro=f"\n{self.extro}\n" if self.extro else '')
         return '\n'.join(start + line for line in document.split('\n'))
 
 

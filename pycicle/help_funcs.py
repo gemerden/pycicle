@@ -45,14 +45,9 @@ def default_str(arg):
 def _func_str(func):
     if not func:
         return 'none'
-    name = func.__qualname__
-    if '<lambda>' in name:
-        src = inspect.getsource(func)
-        _, _, code = src.partition(':')
-        return code.strip()
     if func.__doc__:
-        return f"{name}: {func.__doc__}"
-    return name
+        return f"{func.__qualname__}: {func.__doc__}"
+    return '\n' + inspect.getsource(func)
 
 
 def valid_str(arg):
@@ -73,14 +68,12 @@ str_funcs = dict(
 
 
 def get_parser_help(parser, **kwargs):
-    option_help = ItemList(items={arg.name: arg.help for arg in parser.arguments.values() if arg.help},
-                           extra='\nMore help can be found under the help buttons next to the options.')
-    command_help = f"current: {parser.command(prog=True)}\n\n{parser.cmd_line_help()}"
-    chapters = [Chapter('Option Help', content=option_help('-'))(**kwargs),
-                Chapter('Command Line', content=command_help)(**kwargs)]
+    command_help = f"current: {parser.command(prog=True, path=False)}\n\n{parser.cmd_line_help()}"
+    chapters = [Chapter('Command Line', content=command_help)(**kwargs)]
     document = Document(title=type(parser).__name__,
                         intro=type(parser).__doc__.strip(),
-                        chapters=chapters)
+                        chapters=chapters,
+                        extro='More help can be found under the help buttons next to the options.')
     return document(**kwargs)
 
 
