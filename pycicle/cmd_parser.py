@@ -253,12 +253,11 @@ class Kwargs(object):
             pos_kwargs = {}
             try:  # note: if len(args) == 0, index error cannot occur
                 while len(pos_args) and not pos_arg_defs[0].many:  # from left
-                    pos_kwargs[pos_arg_defs.pop(0).name] = pos_args.pop(0)
+                    pos_kwargs[pos_arg_defs.pop(0).name] = [pos_args.pop(0)]
                 while len(pos_args) and not pos_arg_defs[-1].many:  # from right
-                    pos_kwargs[pos_arg_defs.pop(-1).name] = pos_args.pop(-1)
+                    pos_kwargs[pos_arg_defs.pop(-1).name] = [pos_args.pop(-1)]
             except IndexError:
-                print(cmd_line)
-                raise ValueError("too many positional arguments found")
+                raise ValueError(f"too many positional arguments found: {cmd_line}")
 
             if len(pos_args) and len(pos_arg_defs) == 1:  # remaining
                 pos_kwargs[pos_arg_defs[0].name] = pos_args
