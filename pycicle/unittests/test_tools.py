@@ -1,6 +1,6 @@
 import unittest
 
-from pycicle.tools.parsers import parse_split, encode_split
+from pycicle.tools.parsers import parse_split, split_encode
 
 
 class TestTools(unittest.TestCase):
@@ -11,13 +11,13 @@ class TestTools(unittest.TestCase):
 
         for string in good_strings:
             decoded = parse_split(string)
-            recoded = encode_split(decoded)
+            recoded = split_encode(decoded)
             assert string == recoded
 
         for string in diff_strings:
-            recoded = encode_split(parse_split(string))
+            recoded = split_encode(parse_split(string))
             decoded = parse_split(recoded)
-            rerecoded = encode_split(decoded)
+            rerecoded = split_encode(decoded)
             assert rerecoded == recoded
 
         for string in evil_strings:

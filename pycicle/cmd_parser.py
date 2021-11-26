@@ -10,7 +10,7 @@ from pycicle.basetypes import get_type_string
 from pycicle.exceptions import ConfigError, ValidationError
 from pycicle.tools.utils import MISSING, DEFAULT, get_entry_file, get_typed_class_attrs
 from pycicle.tools.parsers import parse_bool, encode_bool, encode_datetime, parse_datetime, encode_date, parse_date, \
-    encode_time, parse_time, parse_timedelta, encode_timedelta, parse_split, encode_split
+    encode_time, parse_time, parse_timedelta, encode_timedelta, parse_split, split_encode
 
 
 @dataclass
@@ -119,7 +119,7 @@ class Argument(object):
         if value is None or value is MISSING:
             return ''
         if self.many:
-            return encode_split(self._encode(v) for v in value)
+            return split_encode(self._encode(v) for v in value)
         return self._encode(value)
 
     def decode(self, string):
@@ -247,7 +247,7 @@ class Kwargs(object):
             pos_arg_defs = []
             for name, arg_def in arg_defs.items():
                 if name in kwargs:
-                    break  # break on first key already present
+                    break  # break on: first key already present
                 pos_arg_defs.append(arg_def)
 
             pos_kwargs = {}
@@ -265,7 +265,7 @@ class Kwargs(object):
 
         args, kwargs = get_args_kwargs(cmd_line)
         kwargs.update(get_positional_kwargs(args))
-        kwargs = {n: encode_split(l) for n, l in kwargs.items()}
+        kwargs = {n: split_encode(l) for n, l in kwargs.items()}
         return {n: a.parse(kwargs.get(n, DEFAULT)) for n, a in arg_defs.items()}
 
     @classmethod
@@ -331,11 +331,13 @@ class CmdParser(object):
      - the parser can call a target callable: if parser = CmdParser(): parser(func)
     """
     kwargs_class = None
+    sub_parsers = None
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__()
         cls.kwargs_class = cls._create_kwargs_class()
         cls.arguments = cls.kwargs_class._arguments
+        cls.sub_parsers = get_typed_class_attrs(cls, CmdParser)
 
     @classmethod
     def _create_kwargs_class(cls):
@@ -345,17 +347,17 @@ class CmdParser(object):
     @classmethod
     def gui(cls, target=None):
         """ opens the GUI """
-        return cls(cmd_line='--gui', target=target)
+        return cls(target=target)(cmd_line='--gui')
 
     @classmethod
     def cmd(cls, target=None):
         """ reads arguments from command line """
-        cls(cmd_line=None, target=target)
+        return cls(target=target)()
 
     @classmethod
     def parse(cls, *cmd_line, target=None):
         """ parses a command line from python (e.g. tests) """
-        return cls(cmd_line=' '.join(cmd_line), target=target)
+        return cls(target=target)(cmd_line=' '.join(cmd_line))
 
     @classmethod
     def load(cls, filename: str, target=None):
@@ -382,21 +384,27 @@ class CmdParser(object):
         if len(cmd_line_list):
             if cmd_line_list[0] == get_entry_file():
                 cmd_line_list.pop(0)
-        return encode_split(cmd_line_list)
+        return split_encode(cmd_line_list)
 
-    def __init__(self,
-                 cmd_line: Union[str, None] = None,
-                 target: Callable = None):
+    def __init__(self, target: Callable = None):
+        self.target = target
+
+    def __call__(self, cmd_line=None):
         cmd_line = self._prep_cmd_line(cmd_line)
         if '--help' in cmd_line:
             print(self.cmd_line_help())
         elif '--gui' in cmd_line:
             self.kwargs = self.kwargs_class()
-            self._run_gui(target)
+            self._run_gui(self.target)
         else:
-            self.kwargs = self.kwargs_class(cmd_line)
-            if target:
-                self.kwargs(target)
+            first = cmd_line.partition(' ')[0]
+            if first in self.sub_parsers:
+                self.sub_parsers[first](cmd_line=cmd_line)
+            else:
+                self.kwargs = self.kwargs_class(cmd_line)
+                if self.target:
+                    self.kwargs(self.target)
+        return self.target(**self.as_dict())
 
     def _run_gui(self, target):
         """ starts the GUI """
@@ -407,12 +415,6 @@ class CmdParser(object):
 
     def command(self, short=False, prog=False, path=True):
         return self.kwargs._command(short, prog, path)
-
-    def __call__(self, target):
-        if target is None:
-            raise ValueError(f"cannot call missing 'target'")
-        self.parse(self.command())  # run through the validation again
-        return target(**self.as_dict())
 
     def as_dict(self):
         return self.kwargs._as_dict()

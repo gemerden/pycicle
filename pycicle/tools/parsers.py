@@ -142,7 +142,7 @@ def parse_split(string, delimiter='"'):
     return strings
 
 
-def encode_split(strings, delimiter='"'):
+def split_encode(strings, delimiter='"'):
     return ' '.join(quotify(s, delimiter, char=' ') for s in strings)
 
 
@@ -152,13 +152,9 @@ def quotify(string, delimiter='"', char=' '):
     return string
 
 
-def recode_split(string, delimiter='"'):
-    return encode_split((quotify(s, delimiter) for s in parse_split(string, delimiter)), delimiter)
-
-
 if __name__ == '__main__':
     in_strings = ['', '  ', 'a', ' a', ' a  ', 'a b', 'a "b c" d', 'a "b " d', 'a "" b', '""']
     for string in in_strings:
         decoded = parse_split(string)
-        recoded = encode_split(decoded)
+        recoded = split_encode(decoded)
         print(' > '.join([string, str(decoded), recoded]), 'DIFFERENT' if string != recoded else '')

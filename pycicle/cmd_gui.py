@@ -7,7 +7,7 @@ from pycicle.basetypes import FileBase, FolderBase, ChoiceBase
 from pycicle.exceptions import ValidationError
 from pycicle.help_funcs import get_parser_help, get_argument_help
 from pycicle.tools.document import short_line
-from pycicle.tools.parsers import parse_split, encode_split, quotify
+from pycicle.tools.parsers import parse_split, split_encode, quotify
 from pycicle.tools.tktooltip import CreateToolTip
 from pycicle.tools.utils import MISSING, TRUE, FALSE, redirect_output
 
@@ -309,7 +309,7 @@ class ArgWrapper(object):
             filetypes = [('', '.' + ext) for ext in self.arg.type.extensions]
             if self.arg.many:  # append in case of many
                 filenames = askopenfilenames(filetypes=filetypes)
-                self.var.set(f"{self.var.get()} {encode_split([quotify(f) for f in filenames])}")
+                self.var.set(f"{self.var.get()} {split_encode([quotify(f) for f in filenames])}")
             else:
                 filename = askopenfilename(filetypes=filetypes)
                 self.var.set(filename)
@@ -359,7 +359,7 @@ class ArgWrapper(object):
             y = self.app.winfo_rooty() - 64
             show_multi_choice_dialog(self.app.master, title=f"{self.arg.name}",
                                      chosen=chosen, xy=(x, y))
-            self.var.set(encode_split(c for c, b in chosen.items() if b))
+            self.var.set(split_encode(c for c, b in chosen.items() if b))
             self.set_value()
 
         return self._get_dialog_value_widget(master, command=show, **kwargs)
