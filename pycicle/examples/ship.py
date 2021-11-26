@@ -1,3 +1,6 @@
+import sys
+
+sys.path.append('D:/documents/_Code_/_repos_/pycicle')
 from pycicle import CmdParser, Argument
 
 
@@ -11,14 +14,15 @@ class Ship:
 
     def move(self, dx, dy):
         if self.sunk:
-            print(f"{self.name} is sunk, no more moves")
-        self.x += dx
-        self.y += dy
-        print(f"{self.name} moved to {self.x}, {self.y}")
+            print(f"{self.name} sank, no more moving around")
+        else:
+            self.x += dx
+            self.y += dy
+            print(f"{self.name} moved to {self.x}, {self.y}")
 
-    def sink(self, do):
-        self.sunk = do
-        print(f"{self.name} sank")
+    def sink(self, sunk):
+        self.sunk = sunk
+        print(f"{self.name} {'sank' if sunk else 'unsank'}")
 
 
 class Move(CmdParser):
@@ -27,7 +31,11 @@ class Move(CmdParser):
 
 
 class Sink(CmdParser):
-    sink = Argument(bool, default=True)
+    sunk = Argument(bool, default=True)
+
+
+class Quit(CmdParser):
+    quit = Argument(bool, default=True)
 
 
 class ShipCommand(CmdParser):
@@ -36,7 +44,8 @@ class ShipCommand(CmdParser):
     def __init__(self):
         super().__init__(self.create,
                          move=Move(self.move),
-                         sink=Sink(self.sink))
+                         sink=Sink(self.sink),
+                         quit=Quit(self.quit))
         self.ship = None
 
     def create(self, name):
@@ -45,10 +54,19 @@ class ShipCommand(CmdParser):
     def move(self, dx, dy):
         self.ship.move(dx, dy)
 
-    def sink(self, do):
-        self.ship.sink(do)
+    def sink(self, sunk):
+        self.ship.sink(sunk)
+
+    def quit(self, quit):
+        if quit:
+            raise SystemExit
 
 
 if __name__ == '__main__':
     ship_command = ShipCommand()
     ship_command()
+    while True:
+        try:
+            ship_command(input())
+        except Exception as e:
+            print('oops:', str(e))
