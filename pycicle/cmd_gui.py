@@ -552,7 +552,7 @@ class ArgGui(BaseFrame):
             try:
                 self.parser = self.parser.load(self.filename)
             except Exception as e:
-                tk.messagebox.showerror("error while loading file",
+                tk.messagebox.showerror("error while loading command line file",
                                         f"message: {str(e)}\n\nprobable cause:\n"
                                         f"file is incompatible with the configuration of the parser")
             else:
