@@ -3,7 +3,7 @@ import sys
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, date, time
-from typing import Callable, Union, Any
+from typing import Callable, Union, Any, Dict
 
 from pycicle import cmd_gui
 from pycicle.basetypes import get_type_string
@@ -257,6 +257,7 @@ class Kwargs(object):
                 while len(pos_args) and not pos_arg_defs[-1].many:  # from right
                     pos_kwargs[pos_arg_defs.pop(-1).name] = pos_args.pop(-1)
             except IndexError:
+                print(cmd_line)
                 raise ValueError("too many positional arguments found")
 
             if len(pos_args) and len(pos_arg_defs) == 1:  # remaining
@@ -331,13 +332,11 @@ class CmdParser(object):
      - the parser can call a target callable: if parser = CmdParser(): parser(func)
     """
     kwargs_class = None
-    sub_parsers = None
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__()
         cls.kwargs_class = cls._create_kwargs_class()
         cls.arguments = cls.kwargs_class._arguments
-        cls.sub_parsers = get_typed_class_attrs(cls, CmdParser)
 
     @classmethod
     def _create_kwargs_class(cls):
@@ -386,8 +385,9 @@ class CmdParser(object):
                 cmd_line_list.pop(0)
         return split_encode(cmd_line_list)
 
-    def __init__(self, target: Callable = None):
+    def __init__(self, target: Callable = None, **sub_parsers: 'CmdParser'):
         self.target = target
+        self.sub_parsers = sub_parsers
 
     def __call__(self, cmd_line=None):
         cmd_line = self._prep_cmd_line(cmd_line)
@@ -395,7 +395,7 @@ class CmdParser(object):
             print(self.cmd_line_help())
         elif '--gui' in cmd_line:
             self.kwargs = self.kwargs_class()
-            self._run_gui(self.target)
+            self._run_gui()
         else:
             first = cmd_line.partition(' ')[0]
             if first in self.sub_parsers:
@@ -404,11 +404,11 @@ class CmdParser(object):
                 self.kwargs = self.kwargs_class(cmd_line)
                 if self.target:
                     self.kwargs(self.target)
-        return self.target(**self.as_dict())
+        return self
 
-    def _run_gui(self, target):
+    def _run_gui(self):
         """ starts the GUI """
-        cmd_gui.ArgGui(parser=self, target=target).mainloop()
+        cmd_gui.ArgGui(parser=self).mainloop()
 
     def complete(self):
         return self.kwargs._complete()

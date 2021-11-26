@@ -468,14 +468,13 @@ class ButtonBar(BaseFrame):
 class ArgGui(BaseFrame):
     icon_file = os.path.abspath(os.path.join(os.path.dirname(__file__), 'images/icon.png'))
 
-    def __init__(self, parser, target):
-        super().__init__(tk.Tk(), parser=parser, target=target)
+    def __init__(self, parser):
+        super().__init__(tk.Tk(), parser=parser)
         self.master.eval('tk::PlaceWindow . center')
         self.master.after(100, self.command_frame.show_command)
 
-    def _init(self, parser, target):
+    def _init(self, parser):
         self.parser = parser
-        self.target = target
         self.filename = None
         self.master.title(f"PyCicle: {type(parser).__name__}")
         icon = tk.PhotoImage(file=self.icon_file)
@@ -511,8 +510,8 @@ class ArgGui(BaseFrame):
             wrapper.del_value()
         self.command_frame.show_command()
 
-    def command(self, short=False, path=False, list=False):
-        cmd_line = self.parser.command(short=short, prog=True, path=path)
+    def command(self, short=False, path=False, list=False, prog=False):
+        cmd_line = self.parser.command(short=short, prog=prog, path=path)
         if list:
             return str(parse_split(cmd_line))
         return cmd_line
@@ -524,13 +523,13 @@ class ArgGui(BaseFrame):
         self.set_values()
 
     def run(self):
-        if self.target is None:
+        if self.parser.target is None:
             tk.messagebox.showinfo('nothing to run', 'no runnable target was configured for this app')
         elif self.set_values():
             dialog = OutputDialog(self.master)
             with redirect_output(dialog):
                 print('running: ', self.command(), '\n')
-                self.parser(self.target)
+                self.parser(self.command(prog=False))
 
     def save(self):
         if self.set_values():

@@ -9,4 +9,4 @@ class Parser(CmdParser):
 if __name__ == '__main__':
     def run(aaa, bbb):
         print(f"aaa = {aaa}, bbb = {bbb}")
-    Parser(target=run)
+    Parser(target=run)()
