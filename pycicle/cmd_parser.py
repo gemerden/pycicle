@@ -302,7 +302,7 @@ class Kwargs(object):
         """ calls the target with the argument values """
         if target is None:
             raise ValueError(f"cannot call missing target")
-        self._parse(self._command())  # runs through the validation once again
+        self._parse(self._command())  # to run through the validation again
         return target(**self.__dict__)  # call the target
 
     def _command(self, short=False, prog=False, path=True):
@@ -378,8 +378,9 @@ class CmdParser(object):
         return split_encode(cmd_line_list)
 
     def __init__(self, __target: Callable = None, **sub_parsers: 'CmdParser'):
-        self.target = __target  # double underscore to avoid name clashes with sub_parsers
+        self.target = __target  # double underscore to avoid name clashes with **sub_parsers
         self.sub_parsers = sub_parsers
+        self.kwargs = self.kwargs_class()
 
     def __call__(self, cmd_line=None):
         cmd_line = self._prep_cmd_line(cmd_line)
@@ -387,7 +388,6 @@ class CmdParser(object):
         if first == '--help':
             print(self.cmd_line_help())
         elif first == '--gui':
-            self.kwargs = self.kwargs_class()
             self._run_gui()
         elif first in self.sub_parsers:
             self.sub_parsers[first](cmd_line=sub_cmd)
