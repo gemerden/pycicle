@@ -297,13 +297,6 @@ class Kwargs(object):
     def _as_dict(self):
         return self.__dict__.copy()
 
-    def __call__(self, target: Callable) -> Any:
-        """ calls the target with the argument values """
-        if target is None:
-            raise ValueError(f"cannot call missing target")
-        self._parse(self._command())  # to run through the validation again
-        return target(**self.__dict__)  # call the target
-
     def _command(self, short=False, prog=False, path=True):
         """ creates the command line that can be used to call the parser:
             - short: short flags (e.g. -d) if possible,
@@ -392,9 +385,14 @@ class CmdParser(object):
             self.sub_parsers[first](cmd_line=sub_cmd)
         else:
             self.kwargs._parse(cmd_line)
-            if self.target:
-                self.kwargs(self.target)
+            self.run(do_raise=False)
         return self
+
+    def run(self, do_raise=True):
+        if self.target is not None:
+            self.target(**self.kwargs._as_dict())
+        elif do_raise:
+            raise ValueError(f"cannot call missing target")
 
     def _run_gui(self):
         """ starts the GUI """
