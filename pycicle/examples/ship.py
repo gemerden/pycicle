@@ -24,6 +24,11 @@ class Ship:
         self.sunk = sunk
         print(f"{self.name} {'sank' if sunk else 'unsank'}")
 
+    def __str__(self):
+        if self.sunk:
+            return f"{self.name}(sunk at {self.x}, {self.y})"
+        return f"{self.name}({self.x}, {self.y})"
+
 
 class Move(CmdParser):
     dx = Argument(int)
@@ -59,14 +64,14 @@ class ShipCommand(CmdParser):
 
     def quit(self, quit):
         if quit:
-            raise SystemExit
+            raise KeyboardInterrupt
 
 
 if __name__ == '__main__':
     ship_command = ShipCommand()
-    ship_command()
-    while True:
-        try:
-            ship_command(input())
-        except Exception as e:
-            print('oops:', str(e))
+    ship_command('--gui')
+    # while True:
+    #     try:
+    #         ship_command(input())
+    #     except Exception as e:
+    #         print('oops:', str(e))
