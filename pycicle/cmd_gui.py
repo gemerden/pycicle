@@ -58,9 +58,11 @@ class MultiBindMixin(object):
             def call_bindings(event):
                 for callback in self._bindings[key]:
                     callback(event)
+
             super().bind(key, call_bindings)
 
         self._bindings[key].extend(funcs)
+
 
 class Frame(TooltipMixin, tk.Frame):
     pass
@@ -155,6 +157,7 @@ class BaseFrame(Frame):
     norm_font = ('Helvetica', 10, 'normal')
     bold_font = ('Helvetica', 10, 'bold')
     head_config = {'font': bold_font, 'anchor': tk.W}
+    norm_config = {'font': norm_font, 'anchor': tk.W}
     cell_config = {'font': norm_font}
     grid_config = {'padx': 4, 'pady': 1, 'sticky': tk.W}
 
@@ -211,8 +214,8 @@ class ArgWrapper(object):
         'highlightbackground': "red",
     }
 
-    def __init__(self, app, argument):
-        self.app = app
+    def __init__(self, owner, argument):
+        self.owner = owner
         self.arg = argument
         self.var = tk.StringVar()
         self.factory = {bool: self._get_choice_value_widget,
@@ -225,7 +228,7 @@ class ArgWrapper(object):
 
     @property
     def kwargs(self):  # to edit the actual args
-        return self.app.parser.kwargs
+        return self.owner.parser.kwargs
 
     def get_value(self):
         value = getattr(self.kwargs,
@@ -250,7 +253,7 @@ class ArgWrapper(object):
             self.help_button.config(fg='black')
             self.error = None
         self.widget.tooltip = self.error
-        self.app.show_command()
+        self.owner.show_command()
         return self.error is None
 
     def del_value(self):
@@ -272,7 +275,7 @@ class ArgWrapper(object):
             x = self.help_button.winfo_rootx() + self.help_button.winfo_width() + 5
             y = self.help_button.winfo_rooty() - h - 30
             help_text = get_argument_help(self.arg, error=self.error, separator=short_line)
-            show_text_dialog(self.app.master, title=f"help: {self.arg.name}",
+            show_text_dialog(self.owner.master, title=f"help: {self.arg.name}",
                              text=help_text, wh=(w, h), xy=(x, y))
 
         self.help_button = Button(master, text='?', width=2, command=show, tooltip='more info', **kwargs)
@@ -355,9 +358,9 @@ class ArgWrapper(object):
         chosen = {c: (c in values) for c in choices}
 
         def show():
-            x = self.app.winfo_rootx() + self.app.winfo_width() + 8
-            y = self.app.winfo_rooty() - 64
-            show_multi_choice_dialog(self.app.master, title=f"{self.arg.name}",
+            x = self.owner.winfo_rootx() + self.owner.winfo_width() + 8
+            y = self.owner.winfo_rooty() - 64
+            show_multi_choice_dialog(self.owner.master, title=f"{self.arg.name}",
                                      chosen=chosen, xy=(x, y))
             self.var.set(split_encode(c for c, b in chosen.items() if b))
             self.set_value()
@@ -465,48 +468,78 @@ class ButtonBar(BaseFrame):
         return button
 
 
-class ArgGui(BaseFrame):
-    icon_file = os.path.abspath(os.path.join(os.path.dirname(__file__), 'images/icon.png'))
+class SubParserSelector(BaseFrame):
+    selector_config = {'width': 20, 'font': ('Helvetica', 10, 'normal')}
 
-    def __init__(self, parser):
-        super().__init__(tk.Tk(), parser=parser)
-        self.master.eval('tk::PlaceWindow . center')
-        self.master.after(100, self.command_frame.show_command)
+    def _init(self, text, selectable, on_select, **kwargs):
+        self.label_text = text
+        self.selectable = selectable
+        self.on_select = on_select
+        self.selected = tk.StringVar(value=selectable[0])
 
+    def create_widgets(self):
+        def on_select(event):
+            self.on_select(self.selected.get())
+
+        self.selector = Combobox(self,
+                                 values=self.selectable,
+                                 textvariable=self.selected,
+                                 state="readonly", **self.selector_config)
+        self.selector.bind("<<ComboboxSelected>>", on_select)
+        self.label = tk.Label(self, text=self.label_text, **self.head_config)
+        self.label.grid(row=0, column=0, padx=2, pady=2)
+        self.selector.grid(row=0, column=1, padx=2, pady=2)
+
+
+class BaseParserFrame(BaseFrame):
     def _init(self, parser):
         self.parser = parser
-        self.filename = None
-        self.master.title(f"PyCicle: {type(parser).__name__}")
-        icon = tk.PhotoImage(file=self.icon_file)
-        self.master.iconphoto(False, icon)
-        self.grid(row=0, column=0, padx=10, pady=5)
+        self.config(padx=5, pady=5)
 
     @property
     def arguments(self):
         return self.parser.arguments.values()
 
+
+class ChildParserFrame(BaseParserFrame):
+    def _init(self, **kwargs):
+        super()._init(**kwargs)
+        self.config(highlightbackground="gray",
+                    highlightthickness=1)
+        self.filename = None
+
     def create_widgets(self):
-        self.form = FormFrame(self)
+        self.form_frame = FormFrame(self)
         self.command_frame = CommandFrame(self)
         self.button_bar = ButtonBar(self)
-        self.form.grid(row=0, column=0, padx=2, pady=2)
+        self.form_frame.grid(row=0, column=0, padx=2, pady=2)
         self.command_frame.grid(row=1, column=0, padx=2, pady=8)
         self.button_bar.grid(row=2, column=0, padx=2, pady=2)
 
+    def grid(self, *args, **kwargs):
+        super().grid(*args, **kwargs)
+        self.after(100, self.show_command)
+
+    def show_command(self):
+        return self.command_frame.show_command()
+
+    def check(self):
+        self.set_values()
+
     def set_values(self):
         success = True
-        for wrapper in self.form.wrappers:
+        for wrapper in self.form_frame.wrappers:
             success &= wrapper.set_value()
         self.command_frame.show_command()
         return success
 
     def get_values(self):
-        for wrapper in self.form.wrappers:
+        for wrapper in self.form_frame.wrappers:
             wrapper.get_value()
         self.command_frame.show_command()
 
     def del_values(self):
-        for wrapper in self.form.wrappers:
+        for wrapper in self.form_frame.wrappers:
             wrapper.del_value()
         self.command_frame.show_command()
 
@@ -515,12 +548,6 @@ class ArgGui(BaseFrame):
         if list:
             return str(parse_split(cmd_line))
         return cmd_line
-
-    def show_command(self):
-        return self.command_frame.show_command()
-
-    def check(self):
-        self.set_values()
 
     def run(self):
         if self.parser.target is None:
@@ -565,3 +592,63 @@ class ArgGui(BaseFrame):
         x = self.winfo_rootx() + self.winfo_width() + 20
         y = self.winfo_rooty() - 36
         show_text_dialog(self.master, 'help', help_text, wh=(640, 640), xy=(x, y))
+
+
+class ParentParserFrame(BaseParserFrame):
+    grid_config = dict(row=1, column=1, padx=2, pady=2)
+
+    def _init(self, **kwargs):
+        super()._init(**kwargs)
+        self.child_parser_frames = {}
+        self.current_frame = None
+        self.selectable = tuple(self.parser.sub_parsers)  # keys
+        if len(self.arguments):
+            self.selectable = ('',) + self.selectable
+
+    def create_widgets(self):
+        self.parser_selector = SubParserSelector(self,
+                                                 text='subcommand:',
+                                                 selectable=self.selectable,
+                                                 on_select=self.on_select_sub_parser)
+        self.parser_selector.grid(row=0, column=1, padx=2, pady=2, sticky=tk.W)
+        self._create_children()
+
+    def _create_children(self):
+        if len(self.arguments):
+            self.child_parser_frames[''] = ChildParserFrame(self, parser=self.parser)
+
+        for name, sub_parser in self.parser.sub_parsers.items():
+            if len(sub_parser.sub_parsers):
+                child_frame = ParentParserFrame(self, parser=sub_parser)
+            else:
+                child_frame = ChildParserFrame(self, parser=sub_parser)
+            self.child_parser_frames[name] = child_frame
+        self.current_frame = self.child_parser_frames[self.selectable[0]]
+        self.current_frame.grid(**self.grid_config)
+
+    def on_select_sub_parser(self, name):
+        self.current_frame.grid_remove()
+        self.current_frame = self.child_parser_frames[name]
+        self.current_frame.grid(**self.grid_config)
+
+
+class ArgGui(BaseFrame):
+    icon_file = os.path.abspath(os.path.join(os.path.dirname(__file__), 'images/icon.png'))
+
+    def __init__(self, parser):
+        super().__init__(tk.Tk(), root_parser=parser)
+        self.master.eval('tk::PlaceWindow . center')
+
+    def _init(self, root_parser):
+        self.root_parser = root_parser
+        self.master.title(f"PyCicle: {type(root_parser).__name__}")
+        icon = tk.PhotoImage(file=self.icon_file)
+        self.master.iconphoto(False, icon)
+        self.grid(row=0, column=0, padx=10, pady=5)
+
+    def create_widgets(self):
+        if len(self.root_parser.sub_parsers):
+            self.frame = ParentParserFrame(self, parser=self.root_parser)
+        else:
+            self.frame = ChildParserFrame(self, parser=self.root_parser)
+        self.frame.pack()
