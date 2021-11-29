@@ -288,7 +288,7 @@ class Kwargs(object):
     def _as_dict(self):
         return self.__dict__.copy()
 
-    def _command(self, short=False, prog=False, path=True):
+    def _command(self, short=False):
         """ creates the command line that can be used to call the parser:
             - short: short flags (e.g. -d) if possible,
             - prog: called file from command line is included"""
@@ -297,10 +297,7 @@ class Kwargs(object):
         except AttributeError:
             return None
         else:
-            cmd_line = ' '.join(c for c in cmds if c)
-            if prog:
-                return f"{get_entry_file(path)} {cmd_line}"
-            return cmd_line
+            return ' '.join(c for c in cmds if c)
 
 
 class CmdParser(object):
@@ -389,7 +386,7 @@ class CmdParser(object):
 
     @property
     def name(self):
-        return self.file(path=False).partition('.')[0]
+        return self.file(path=False).rpartition('.')[0]
 
     def file(self, path=True):
         return get_entry_file(path)
@@ -441,7 +438,10 @@ class CmdParser(object):
                 print('error:', str(e))
 
     def command(self, short=False, prog=False, path=True):
-        return self.kwargs._command(short, prog, path)
+        cmd = self.kwargs._command(short)
+        if prog:
+            return f"{self.file(path)} {cmd}"
+        return cmd
 
     def as_dict(self):
         return self.kwargs._as_dict()

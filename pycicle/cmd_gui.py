@@ -492,8 +492,9 @@ class SubParserSelector(BaseFrame):
 
 
 class BaseParserFrame(BaseFrame):
-    def _init(self, parser):
+    def _init(self, parser, sub_path=''):
         self.parser = parser
+        self.sub_path = sub_path
         self.config(padx=5, pady=5)
 
     @property
@@ -543,10 +544,14 @@ class ChildParserFrame(BaseParserFrame):
             wrapper.del_value()
         self.command_frame.show_command()
 
-    def command(self, short=False, path=False, list=False, prog=False):
-        cmd_line = self.parser.command(short=short, prog=prog, path=path)
-        if list:
-            return str(quote_split(cmd_line))
+    def command(self, short=False, path=False, list=False, prog=True):
+        cmd_line = self.parser.command(short=short)
+        if cmd_line:
+            cmd_line = ' '.join([self.sub_path, cmd_line])
+            if prog:
+                cmd_line = ' '.join([self.parser.file(path), cmd_line])
+            if list:
+                cmd_line = str(quote_split(cmd_line))
         return cmd_line
 
     def run(self):
@@ -615,13 +620,15 @@ class ParentParserFrame(BaseParserFrame):
 
     def _create_children(self):
         if len(self.arguments):
-            self.child_parser_frames[''] = ChildParserFrame(self, parser=self.parser)
+            self.child_parser_frames[''] = ChildParserFrame(self, parser=self.parser,
+                                                            sub_path=self.sub_path)
 
         for name, sub_parser in self.parser.sub_parsers.items():
+            sub_path = ' '.join([self.sub_path, name])
             if len(sub_parser.sub_parsers):
-                child_frame = ParentParserFrame(self, parser=sub_parser)
+                child_frame = ParentParserFrame(self, parser=sub_parser, sub_path=sub_path)
             else:
-                child_frame = ChildParserFrame(self, parser=sub_parser)
+                child_frame = ChildParserFrame(self, parser=sub_parser, sub_path=sub_path)
             self.child_parser_frames[name] = child_frame
         self.current_frame = self.child_parser_frames[self.selectable[0]]
         self.current_frame.grid(**self.grid_config)
