@@ -149,7 +149,7 @@ class TestArgParser(unittest.TestCase):
 
         test_cmd = make_test_command(Parser, defaults)
         parser = Parser.parse(test_cmd,
-                        target=asserter)
+                              target=asserter)
         assert test_cmd == parser.command()
 
         parser2 = Parser.parse(target=asserter)
@@ -197,8 +197,74 @@ class TestArgParser(unittest.TestCase):
                        two=(os.path.dirname(__file__), '..\\unittests'),
                        three=(['c:\\does_not_exist', '..\\unittests\\does_not_exist'],))
 
-    def test_command_line(self):
-        pass
+    def test_quotes(self):
+        cmds = ['-t a', "-t b", '-t "c"']
+
+        def asserter(text):
+            assert text in 'abcd'
+
+        class Parser(CmdParser):
+            text = Argument(str)
+
+        parser = Parser(asserter)
+
+        for cmd in cmds:
+            parser(cmd)
+
+    def test_subparsers(self):
+        class Ship:
+            def __init__(self, name):
+                self.name = name
+                self.x = 0
+                self.y = 0
+                self.sunk = False
+
+            def move(self, dx, dy):
+                if not self.sunk:
+                    self.x += dx
+                    self.y += dy
+
+            def sink(self, sunk):
+                self.sunk = sunk
+
+        class Move(CmdParser):
+            dx = Argument(int)
+            dy = Argument(int)
+
+        class Sink(CmdParser):
+            sunk = Argument(bool, default=True)
+
+        class ShipCommand(CmdParser):
+            name = Argument(str)
+
+            def __init__(self):
+                super().__init__(self.create,
+                                 move=Move(self.move),
+                                 sink=Sink(self.sink))
+                self.ship = None
+
+            def create(self, name):
+                self.ship = Ship(name)
+
+            def move(self, dx, dy):
+                self.ship.move(dx, dy)
+
+            def sink(self, sunk):
+                self.ship.sink(sunk)
+
+        ship_command = ShipCommand()
+        ship_command('--name "Queen Mary"')
+        assert ship_command.ship.name == "Queen Mary"
+        ship_command('move 2 1')
+        ship_command('move --dx -3 --dy -4')
+        ship_command('move 4 5')
+        assert ship_command.ship.x == 3
+        assert ship_command.ship.y == 2
+        ship_command('sink')
+        assert ship_command.ship.sunk
+        ship_command('move 4 5')  # sunk ships do not move
+        assert ship_command.ship.x == 3
+        assert ship_command.ship.y == 2
 
 
 class TestDescriptorConfig(unittest.TestCase):
