@@ -10,24 +10,24 @@ class Ship:
         self.x = 0
         self.y = 0
         self.sunk = False
-        print(f"{self.name} was created")
+        print(f"'{self.name}' was created")
 
     def move(self, dx, dy):
         if self.sunk:
-            print(f"{self.name} sank, no more moving around")
+            print(f"'{self.name}' sank, no more moving around")
         else:
             self.x += dx
             self.y += dy
-            print(f"{self.name} moved to {self.x}, {self.y}")
+            print(f"'{self.name}' moved to {self.x}, {self.y}")
 
     def sink(self, sunk):
         self.sunk = sunk
-        print(f"{self.name} {'sank' if sunk else 'unsank'}")
+        print(f"'{self.name}' {'sank' if sunk else 'unsank'}")
 
     def __str__(self):
         if self.sunk:
-            return f"{self.name}(sunk at {self.x}, {self.y})"
-        return f"{self.name}({self.x}, {self.y})"
+            return f"'{self.name}'(sunk at {self.x}, {self.y})"
+        return f"'{self.name}'({self.x}, {self.y})"
 
 
 class Move(CmdParser):
@@ -69,9 +69,4 @@ class ShipCommand(CmdParser):
 
 if __name__ == '__main__':
     ship_command = ShipCommand()
-    ship_command('--gui')
-    # while True:
-    #     try:
-    #         ship_command(input())
-    #     except Exception as e:
-    #         print('oops:', str(e))
+    ship_command.prompt()

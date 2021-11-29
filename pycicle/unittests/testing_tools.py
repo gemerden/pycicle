@@ -1,6 +1,6 @@
 from itertools import product
 
-from pycicle.tools.parsers import split_encode
+from pycicle.tools.parsers import quote_join
 
 
 def yielder(arg):
@@ -24,12 +24,12 @@ def make_test_command(parser_class, kwargs, short=False):
 
     def create_value(arg, value):
         if isinstance(value, (list, tuple)):
-            return split_encode(arg._encode(v) for v in value)
+            return quote_join(arg._encode(v) for v in value)
         return arg.encode(value)
 
     cmd = ''
     for name, value in kwargs.items():
-        arg = getattr(parser_class, name)
+        arg = getattr(parser_class.kwargs_class, name)
         value = create_value(arg, value)
         if short:
             if arg.positional:

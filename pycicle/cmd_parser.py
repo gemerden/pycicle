@@ -2,16 +2,14 @@ import os
 import sys
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, date, time
 from inspect import Parameter, signature
-from typing import Callable, Any, Sequence, Set
+from typing import Callable, Any
 
 from pycicle import cmd_gui
 from pycicle.basetypes import get_type_string
 from pycicle.exceptions import ConfigError, ValidationError
 from pycicle.tools.utils import MISSING, DEFAULT, get_entry_file, get_typed_class_attrs, count
-from pycicle.tools.parsers import parse_bool, encode_bool, encode_datetime, parse_datetime, encode_date, parse_date, \
-    encode_time, parse_time, parse_timedelta, encode_timedelta, parse_split, split_encode
+from pycicle.tools.parsers import quote_split, quote_join, default_type_codecs
 
 
 @dataclass
@@ -23,13 +21,7 @@ class Argument(object):
     help: str = ""
     name: str = ""  # set in __set_name__
 
-    type_codecs = {
-        bool: (encode_bool, parse_bool),
-        datetime: (encode_datetime, parse_datetime),
-        timedelta: (encode_timedelta, parse_timedelta),
-        date: (encode_date, parse_date),
-        time: (encode_time, parse_time),
-    }
+    type_codecs = default_type_codecs
 
     reserved = {'help', 'gui'}
 
@@ -120,27 +112,27 @@ class Argument(object):
         if value is None or value is MISSING:
             return ''
         if self.many:
-            return split_encode(self._encode(v) for v in value)
+            return quote_join(self._encode(v) for v in value)
         return self._encode(value)
 
-    def decode(self, string):
+    def decode(self, string_s):
         """ creates value from str, takes 'many' into account """
-        if self.type is not str and string == '':
+        if self.type is not str and string_s == '':
             return self.default
         if self.many:
-            return [self._decode(v) for v in parse_split(string)]
-        return self._decode(string)
+            return [self._decode(s) for s in string_s]
+        return self._decode(string_s)
 
-    def parse(self, value):
-        if value == '':  # but flag was there
-            if self.switch:
-                return True
-            raise ValidationError(f"missing value for '{self.name}'")
+    def parse_list(self, value):
         if value is DEFAULT:  # flag was not there
             if self.default is MISSING:
                 raise ValidationError(f"missing flag or value for '{self.name}'")
             return self.default
-        return self.decode(value)
+        if not len(value):  # but flag was there
+            if self.switch:
+                return True
+            raise ValidationError(f"missing value for '{self.name}'")
+        return self.decode(value if self.many else value[0])
 
     def _validate(self, value):
         def cast(value):
@@ -243,16 +235,15 @@ class Kwargs(object):
             self._parse(cmd_line)
         self._update(kwargs)
 
-    def _parse(self, cmd_line):
+    def _parse(self, cmd_list):
         arg_defs = type(self)._arguments
         flag_lookup = {f: a for a in arg_defs.values() for f in a.flags}
 
-        def get_args_kwargs(cmd_line):
+        def get_args_kwargs(cmd_list):
             """ gets args and kwargs in encoded (str) form """
-            cmd_line_list = parse_split(cmd_line)
             kwargs = {None: []}  # None key for positional arguments
             current_name = None  # positionals come first on cmd line
-            for flag_or_value in cmd_line_list:
+            for flag_or_value in cmd_list:
                 if flag_or_value in flag_lookup:  # flag found
                     current_name = flag_lookup[flag_or_value].name
                     kwargs[current_name] = []  # stays if no values are found
@@ -275,16 +266,16 @@ class Kwargs(object):
                 while len(pos_args) and not pos_arg_defs[-1].many:  # from right
                     pos_kwargs[pos_arg_defs.pop(-1).name] = [pos_args.pop(-1)]
             except IndexError:
-                raise ValueError(f"too many positional arguments found: {cmd_line}")
+                raise ValueError(f"too many positional arguments found: {cmd_list}")
 
             if len(pos_args) and len(pos_arg_defs) == 1:  # remaining
                 pos_kwargs[pos_arg_defs[0].name] = pos_args
             return pos_kwargs
 
-        args, kwargs = get_args_kwargs(cmd_line)
+        args, kwargs = get_args_kwargs(cmd_list)
         kwargs.update(get_positional_kwargs(args))
-        kwargs = {n: split_encode(l) for n, l in kwargs.items()}
-        self._update({n: a.parse(kwargs.get(n, DEFAULT)) for n, a in arg_defs.items()})
+        # kwargs = {n: quote_join(l) for n, l in kwargs.items()}
+        self._update({n: a.parse_list(kwargs.get(n, DEFAULT)) for n, a in arg_defs.items()})
 
     def _update(self, kwargs):
         """ fills self with values """
@@ -325,15 +316,18 @@ class CmdParser(object):
 
     @classmethod
     def _create_kwargs_class(cls):
-        """ copies arguments and creates new Kwargs class with these arguments """
-        return type(cls.__name__ + 'Kwargs', (Kwargs,), get_typed_class_attrs(cls, Argument))
+        """ moves arguments to new Kwargs class """
+        arguments =  get_typed_class_attrs(cls, Argument)
+        for attr_name in arguments:
+            delattr(cls, attr_name)
+        return type(cls.__name__ + 'Kwargs', (Kwargs,), arguments)
 
     @classmethod
     def load(cls, filename: str, target=None):
         """ loads a command line from file """
         with open(filename, 'r') as f:
             cmd_line = f.read()
-        return cls.parse(cmd_line, target=target)
+        return cls(target).parse(cmd_line)
 
     @classmethod
     def from_callable(cls, func):
@@ -382,51 +376,69 @@ class CmdParser(object):
             cmd_line_list = sys.argv[1:]  # fix for running tests with pytest
         else:
             cmd_line_list = sys.argv
-        return ' '.join(cls._remove_entry_file(cmd_line_list))
+        return cls._remove_entry_file(cmd_line_list)
 
     @classmethod
     def normalize(cls, cmd_line):
-        return ' '.join(cls._remove_entry_file(parse_split(cmd_line)))
+        return cls._remove_entry_file(quote_split(cmd_line))
 
     def __init__(self, __target: Callable = None, **sub_parsers: 'CmdParser'):
         self.target = __target  # double underscore to avoid name clashes with **sub_parsers
         self.sub_parsers = sub_parsers
         self.kwargs = self.kwargs_class()
 
-    def __call__(self, cmd_line=None):
-        if cmd_line is None:
-            cmd_line = self.get_cmd_from_sys()
+    @property
+    def name(self):
+        return self.file(path=False).partition('.')[0]
+
+    def file(self, path=True):
+        return get_entry_file(path)
+
+    def __call__(self, cmd=None):
+        if cmd is None:
+            cmd_list = self.get_cmd_from_sys()
         else:
-            cmd_line = self.normalize(cmd_line)
-        first, _, sub_cmd = cmd_line.partition(' ')
+            cmd_list = self.normalize(cmd)
+        first = cmd_list[0] if cmd_list else None
         if first == '--help':
             print(self.cmd_line_help())
         elif first == '--gui':
             self.gui()
         elif first in self.sub_parsers:
-            self.sub_parsers[first](sub_cmd)
+            self.sub_parsers[first](quote_join(cmd_list[1:]))
         else:
-            self.kwargs._parse(cmd_line)
+            self.kwargs._parse(cmd_list)
             self.run(do_raise=False)
         return self
 
     def cmd(self):
         """ reads arguments from command line """
-        return self.__call__(cmd_line=None)
+        return self.__call__(cmd=None)
 
     def gui(self):
         """ opens the GUI """
         return cmd_gui.ArgGui(parser=self).mainloop()
 
-    def parse(self, *cmd_line):
+    def parse(self, *cmds):
         """ parses a command line from python (e.g. tests) """
-        return self.__call__(' '.join(cmd_line))
+        return self.__call__(' '.join(cmds))
 
     def run(self, do_raise=True):
         if self.target is not None:
             self.target(**self.kwargs._as_dict())
         elif do_raise:
             raise ValueError(f"cannot call missing target")
+
+    def prompt(self, name=None):
+        prompt = (name or self.name) + '>'
+        while True:
+            try:
+                print(prompt, end=' ')
+                self.__call__(input())
+            except KeyboardInterrupt:
+                sys.exit()
+            except Exception as e:
+                print('error:', str(e))
 
     def command(self, short=False, prog=False, path=True):
         return self.kwargs._command(short, prog, path)

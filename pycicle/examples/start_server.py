@@ -21,14 +21,14 @@ class StartServer(CmdParser):
                      help='the protocol the server will use')
     host = Argument(str, default='0.0.0.0', valid=is_valid_host,
                     help='host IP of the server')
-    port = Argument(str, valid=is_valid_port, default=8080,
+    port = Argument(str, default=8080, valid=is_valid_port,
                     help='port on which the server should run')
     restart = Argument(bool, default=True,
                        help='should the server restart after crash?')
+    logfile = Argument(File('.log'), default=None,
+                       help='logfile for the server, log to stdout if None')
     debug = Argument(bool, default=False,
                      help='run in debug mode')
-    logfile = Argument(File('.log'), default=None,
-                       help='logfile for the server, log to stdout if absent')
 
 
 if __name__ == '__main__':

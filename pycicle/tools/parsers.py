@@ -1,5 +1,5 @@
-from datetime import datetime, timedelta, time
-from functools import wraps, partial
+from datetime import datetime, timedelta, time, date
+from functools import wraps
 
 from pycicle.tools.utils import TRUE, FALSE
 
@@ -128,33 +128,42 @@ def string_to_datetime(string):
         return datetime.strptime(string, "%Y-%m-%dT%H:%M:%S")
 
 
-def parse_split(string, delimiter='"'):
+default_type_codecs = {
+    bool: (encode_bool, parse_bool),
+    datetime: (encode_datetime, parse_datetime),
+    timedelta: (encode_timedelta, parse_timedelta),
+    date: (encode_date, parse_date),
+    time: (encode_time, parse_time),
+}
+
+
+def quote_split(string, quote='"'):
     strings = []
     after = string
     while len(after):
-        before, char, after = after.partition(delimiter)
+        before, char, after = after.partition(quote)
         strings.extend(before.split())
-        if char == delimiter:
-            between, char, after = after.partition(delimiter)
-            if char != delimiter:
-                raise ValueError(f"parsing error in 'parse_split()': unmatched quotes ({delimiter}) in '{string}'")
+        if char:
+            between, char, after = after.partition(quote)
+            if not char:
+                raise ValueError(f"parsing error in 'quote_split()': unmatched '{quote}' in '{string}'")
             strings.append(between)
     return strings
 
 
-def split_encode(strings, delimiter='"'):
-    return ' '.join(quotify(s, delimiter, char=' ') for s in strings)
+def quote_join(strings, quote='"', char=' '):
+    return char.join(quotify(s, quote, char) for s in strings)
 
 
-def quotify(string, delimiter='"', char=' '):
+def quotify(string, quote='"', char=' '):
     if not char or string == '' or char in string:
-        return f'{delimiter}{string}{delimiter}'
+        return f'{quote}{string}{quote}'
     return string
 
 
 if __name__ == '__main__':
     in_strings = ['', '  ', 'a', ' a', ' a  ', 'a b', 'a "b c" d', 'a "b " d', 'a "" b', '""']
     for string in in_strings:
-        decoded = parse_split(string)
-        recoded = split_encode(decoded)
+        decoded = quote_split(string)
+        recoded = quote_join(decoded)
         print(' > '.join([string, str(decoded), recoded]), 'DIFFERENT' if string != recoded else '')

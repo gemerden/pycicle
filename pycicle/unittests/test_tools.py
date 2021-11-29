@@ -1,6 +1,6 @@
 import unittest
 
-from pycicle.tools.parsers import parse_split, split_encode
+from pycicle.tools.parsers import quote_split, quote_join
 
 
 class TestTools(unittest.TestCase):
@@ -10,19 +10,19 @@ class TestTools(unittest.TestCase):
         evil_strings = ['"', '"""', 'a" b', ' a " b""', '"'"'"'']
 
         for string in good_strings:
-            decoded = parse_split(string)
-            recoded = split_encode(decoded)
+            decoded = quote_split(string)
+            recoded = quote_join(decoded)
             assert string == recoded
 
         for string in diff_strings:
-            recoded = split_encode(parse_split(string))
-            decoded = parse_split(recoded)
-            rerecoded = split_encode(decoded)
+            recoded = quote_join(quote_split(string))
+            decoded = quote_split(recoded)
+            rerecoded = quote_join(decoded)
             assert rerecoded == recoded
 
         for string in evil_strings:
             with self.assertRaises(ValueError):
-                parse_split(string)
+                quote_split(string)
 
 
 
