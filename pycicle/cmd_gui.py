@@ -544,11 +544,11 @@ class ChildParserFrame(BaseParserFrame):
             wrapper.del_value()
         self.command_frame.show_command()
 
-    def command(self, short=False, path=False, list=False, prog=True):
+    def command(self, short=False, path=False, list=False, file=True):
         cmd_line = self.parser.command(short=short)
         if cmd_line:
             cmd_line = ' '.join([self.sub_path, cmd_line])
-            if prog:
+            if file:
                 cmd_line = ' '.join([self.parser.file(path), cmd_line])
             if list:
                 cmd_line = str(quote_split(cmd_line))
@@ -561,7 +561,7 @@ class ChildParserFrame(BaseParserFrame):
             dialog = OutputDialog(self.master)
             with redirect_output(dialog):
                 print('running: ', self.command(), '\n')
-                self.parser(self.command(prog=False))
+                self.parser(self.command(file=False))
 
     def save(self):
         if self.set_values():

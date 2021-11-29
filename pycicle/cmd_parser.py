@@ -290,8 +290,7 @@ class Kwargs(object):
 
     def _command(self, short=False):
         """ creates the command line that can be used to call the parser:
-            - short: short flags (e.g. -d) if possible,
-            - prog: called file from command line is included"""
+            - short: short flags (e.g. -d) if possible """
         try:
             cmds = [arg.cmd(self, short) for arg in self._arguments.values()]
         except AttributeError:
@@ -437,9 +436,9 @@ class CmdParser(object):
             except Exception as e:
                 print('error:', str(e))
 
-    def command(self, short=False, prog=False, path=True):
+    def command(self, short=False, file=False, path=True):
         cmd = self.kwargs._command(short)
-        if prog:
+        if file:
             return f"{self.file(path)} {cmd}"
         return cmd
 

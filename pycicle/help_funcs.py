@@ -68,7 +68,7 @@ str_funcs = dict(
 
 
 def get_parser_help(parser, **kwargs):
-    command_help = f"current: {parser.command(prog=True, path=False)}\n\n{parser.cmd_line_help()}"
+    command_help = f"current: {parser.command(file=True, path=False)}\n\n{parser.cmd_line_help()}"
     chapters = [Chapter('Command Line', content=command_help)(**kwargs)]
     document = Document(title=type(parser).__name__,
                         intro=type(parser).__doc__.strip(),
