@@ -580,7 +580,7 @@ class ChildParserFrame(BaseParserFrame):
             except Exception as e:
                 tk.messagebox.showerror("error while loading command line file",
                                         f"message: {str(e)}\n\nprobable cause:\n"
-                                        f"file is incompatible with the configuration of the parser")
+                                        f"file is incompatible with the configuration of the current parser")
             else:
                 self.get_values()
 
