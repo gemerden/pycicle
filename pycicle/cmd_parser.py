@@ -8,7 +8,7 @@ from typing import Callable, Union, Any, Dict
 from pycicle import cmd_gui
 from pycicle.basetypes import get_type_string
 from pycicle.exceptions import ConfigError, ValidationError
-from pycicle.tools.utils import MISSING, DEFAULT, get_entry_file, get_typed_class_attrs
+from pycicle.tools.utils import MISSING, DEFAULT, get_entry_file, get_typed_class_attrs, count
 from pycicle.tools.parsers import parse_bool, encode_bool, encode_datetime, parse_datetime, encode_date, parse_date, \
     encode_time, parse_time, parse_timedelta, encode_timedelta, parse_split, split_encode
 
@@ -38,7 +38,7 @@ class Argument(object):
         self._encode = encode or str  # str is default
         self._decode = decode or self.type  # self.type is default (int('3') == 3)
         self.flags = None  # set in CmdParser.__init_subclass__
-        self.positional = False  # set by CmdParser.__init_subclass__
+        self.positional = False  # set by CmdParser.__init_subclass__; meaning argument CAN be positional
 
     @property
     def full_name(self):
@@ -108,8 +108,9 @@ class Argument(object):
 
         self.default = self._validate_default(self.default)
 
-        if all(e.positional and not (e.many or e.switch) for e in existing.values()):
-            self.positional = True
+        if count(existing.values(), key=lambda v: v.many) <= 1:
+            if all(e.positional and not e.switch for e in existing.values()):
+                self.positional = True
 
         if any(self.flags[-1] == e.flags[-1] for e in existing.values()):
             self.flags = self.flags[:-1]  # remove short flag
@@ -186,6 +187,8 @@ class Argument(object):
         cmd_value = self.encode(value)
         if cmd_value == '':
             return ''
+        if short and self.positional:
+            return cmd_value
         return f"{self._cmd_flag(short)} {cmd_value}"
 
     def usage(self):
@@ -225,8 +228,23 @@ class Kwargs(object):
         cls._arguments = valid_arguments
 
     @classmethod
-    def _parse(cls, cmd_line):
-        arg_defs = cls._arguments
+    def _usage(cls):
+        return f"{' '.join(arg.usage() for arg in cls._arguments.values())}"
+
+    @classmethod
+    def _options(cls, line_start=''):
+        line_start = '\n' + line_start
+        return line_start + line_start.join(arg.option() for arg in cls._arguments.values())
+
+    def __init__(self, cmd_line: str = '', **kwargs):
+        super().__init__()
+        self._update(self._defaults())
+        if cmd_line:
+            self._parse(cmd_line)
+        self._update(kwargs)
+
+    def _parse(self, cmd_line):
+        arg_defs = type(self)._arguments
         flag_lookup = {f: a for a in arg_defs.values() for f in a.flags}
 
         def get_args_kwargs(cmd_line):
@@ -266,26 +284,7 @@ class Kwargs(object):
         args, kwargs = get_args_kwargs(cmd_line)
         kwargs.update(get_positional_kwargs(args))
         kwargs = {n: split_encode(l) for n, l in kwargs.items()}
-        return {n: a.parse(kwargs.get(n, DEFAULT)) for n, a in arg_defs.items()}
-
-    @classmethod
-    def _usage(cls):
-        return f"{' '.join(arg.usage() for arg in cls._arguments.values())}"
-
-    @classmethod
-    def _options(cls, line_start=''):
-        line_start = '\n' + line_start
-        return line_start + line_start.join(arg.option() for arg in cls._arguments.values())
-
-    def __init__(self, cmd_line: str = '', **kwargs):
-        super().__init__()
-        if cmd_line:
-            if kwargs:
-                raise ValueError(f"cannot initialize {type(self).__name__} with both command line and keyword arguments")
-            self._update(self._parse(cmd_line))
-        else:
-            self._update(self._defaults())
-            self._update(kwargs)
+        self._update({n: a.parse(kwargs.get(n, DEFAULT)) for n, a in arg_defs.items()})
 
     def _update(self, kwargs):
         """ fills self with values """
@@ -343,17 +342,17 @@ class CmdParser(object):
     @classmethod
     def gui(cls, target=None):
         """ opens the GUI """
-        return cls(target=target)(cmd_line='--gui')
+        return cls(target)(cmd_line='--gui')
 
     @classmethod
     def cmd(cls, target=None):
         """ reads arguments from command line """
-        return cls(target=target)()
+        return cls(target)()
 
     @classmethod
     def parse(cls, *cmd_line, target=None):
         """ parses a command line from python (e.g. tests) """
-        return cls(target=target)(cmd_line=' '.join(cmd_line))
+        return cls(target)(cmd_line=' '.join(cmd_line))
 
     @classmethod
     def load(cls, filename: str, target=None):
@@ -392,7 +391,7 @@ class CmdParser(object):
         elif first in self.sub_parsers:
             self.sub_parsers[first](cmd_line=sub_cmd)
         else:
-            self.kwargs = self.kwargs_class(cmd_line)
+            self.kwargs._parse(cmd_line)
             if self.target:
                 self.kwargs(self.target)
         return self
