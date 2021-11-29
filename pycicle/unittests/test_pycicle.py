@@ -17,7 +17,7 @@ class TestArgParser(unittest.TestCase):
 
         Parser.parse('--help')
         import subprocess
-        subprocess.run(['python', __file__, "-h"])
+        subprocess.run(['python', __file__, "--help"])
 
     def test_target(self):
         """ test whether target gets called """
