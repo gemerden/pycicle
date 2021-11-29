@@ -367,7 +367,7 @@ class CmdParser(object):
         if len(cmd_line_list):
             if cmd_line_list[0] == get_entry_file():
                 cmd_line_list.pop(0)
-        return split_encode(cmd_line_list)
+        return ' '.join(cmd_line_list)
 
     def __init__(self, __target: Callable = None, **sub_parsers: 'CmdParser'):
         self.target = __target  # double underscore to avoid name clashes with **sub_parsers
