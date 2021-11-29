@@ -35,4 +35,4 @@ if __name__ == '__main__':
     def start_server(proto, host, port, restart, debug, logfile=None):
         print(f"starting server on: {proto}://{host}:{port} with restart: {restart}, debug: {debug} and logfile: {logfile}")
 
-    StartServer(target=start_server)('--gui')
+    StartServer(start_server)('--gui')

@@ -32,7 +32,10 @@ def make_test_command(parser_class, kwargs, short=False):
         arg = getattr(parser_class, name)
         value = create_value(arg, value)
         if short:
-            cmd = cmd + f" -{name[0]} {value}"  # can create doubles
+            if arg.positional:
+                cmd = cmd + f" {value}"
+            else:
+                cmd = cmd + f" -{name[0]} {value}"  # can create doubles
         else:
             cmd = cmd + f" --{name} {value}"
     return cmd.strip()
@@ -53,7 +56,7 @@ def assert_product(parser_class, **iterators):
     for kwargs in dict_product(**iterators):
         asserter = args_asserter(**kwargs)
         test_cmd = make_test_command(parser_class, kwargs)
-        parser = parser_class(target=asserter)(test_cmd)
+        parser = parser_class(asserter)(test_cmd)
         assert test_cmd == parser.command()
 
 
