@@ -3,7 +3,8 @@ import sys
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, date, time
-from typing import Callable, Union, Any, Dict
+from inspect import Parameter, signature
+from typing import Callable, Any, Sequence, Set
 
 from pycicle import cmd_gui
 from pycicle.basetypes import get_type_string
@@ -56,11 +57,10 @@ class Argument(object):
         if value is MISSING or value is DEFAULT:
             return True
         if self.type is str:
-            if isinstance(value, str):
-                return False
-            raise ValueError(f"non-string value '{value}' for string attribute '{self.name}'")
-        else:
-            return isinstance(value, str)
+            if self.many:
+                return not all(isinstance(v, str) for v in value)
+            return not isinstance(value, str)
+        return isinstance(value, str)
 
     def __set_name__(self, cls, name):
         """ descriptor method to set the name to the attribute name in the owner class """
@@ -202,7 +202,7 @@ class Argument(object):
     def option(self):
         flags = ', '.join(self.flags)
         type_ = get_type_string(self.type, short=True)
-        posit = 'true'if self.positional else 'false'
+        posit = 'true' if self.positional else 'false'
         switch = 'true' if self.switch else 'false'
         if self.required:
             return f"{flags} ({type_}): positional: {posit}, switch: {switch}, {self.help}"
@@ -314,38 +314,19 @@ class Kwargs(object):
 
 class CmdParser(object):
     """
-    This class uses the arguments to parse and run the command line or start the GUI. A few notes:
-     - The class itself stores the values for all the arguments. It subclasses Mapping and can be used
-     as keyword arguments for a function (e.g. func(**parser)),
-     - To enable this usage, all methods, class and other attributes start with an underscore,
-     - the parser can call a target callable: if parser = CmdParser(): parser(func)
+    This class is the Parser API. Actual parsing takes place in the Kwargs class, where also the parsed values are stored.
     """
     kwargs_class = None
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__()
         cls.kwargs_class = cls._create_kwargs_class()
-        cls.arguments = cls.kwargs_class._arguments
+        cls.arguments = cls.kwargs_class._arguments  # convenience shortcut
 
     @classmethod
     def _create_kwargs_class(cls):
         """ copies arguments and creates new Kwargs class with these arguments """
         return type(cls.__name__ + 'Kwargs', (Kwargs,), get_typed_class_attrs(cls, Argument))
-
-    @classmethod
-    def gui(cls, target=None):
-        """ opens the GUI """
-        return cls(target)(cmd_line='--gui')
-
-    @classmethod
-    def cmd(cls, target=None):
-        """ reads arguments from command line """
-        return cls(target)()
-
-    @classmethod
-    def parse(cls, *cmd_line, target=None):
-        """ parses a command line from python (e.g. tests) """
-        return cls(target)(cmd_line=' '.join(cmd_line))
 
     @classmethod
     def load(cls, filename: str, target=None):
@@ -355,19 +336,57 @@ class CmdParser(object):
         return cls.parse(cmd_line, target=target)
 
     @classmethod
-    def _prep_cmd_line(cls, cmd_line):
-        if cmd_line is None:
-            if "PYTEST_CURRENT_TEST" in os.environ:
-                cmd_line_list = sys.argv[1:]  # fix for running tests with pytest
-            else:
-                cmd_line_list = sys.argv
-        else:
-            cmd_line_list = parse_split(cmd_line)
+    def from_callable(cls, func):
+        def get_type(p):
+            if get_many(p):
+                try:
+                    return p.annotation.__args__[0]
+                except AttributeError:
+                    raise TypeError(f"List parameter must have element type (e.g. 'List[int]', not 'List' or 'list')")
+            return p.annotation
 
+        def get_many(p):
+            try:
+                p.annotation.__args__[0]
+            except (AttributeError, IndexError):
+                return False
+            return True
+
+        def get_default(p):
+            if p.default is Parameter.empty:
+                return MISSING
+            return p.default
+
+        def get_class_name(f):
+            return ''.join(n.capitalize() for n in f.__qualname__.split('.'))
+
+        arguments = {}
+        sig = signature(func)
+        for name, param in sig.parameters.items():
+            arguments[name] = Argument(type=get_type(param),
+                                       many=get_many(param),
+                                       default=get_default(param))
+
+        return type(get_class_name(func), (CmdParser,), arguments)(func)
+
+    @classmethod
+    def _remove_entry_file(cls, cmd_line_list):
         if len(cmd_line_list):
             if cmd_line_list[0] == get_entry_file():
                 cmd_line_list.pop(0)
-        return ' '.join(cmd_line_list)
+        return cmd_line_list
+
+    @classmethod
+    def get_cmd_from_sys(cls):
+        if "PYTEST_CURRENT_TEST" in os.environ:
+            cmd_line_list = sys.argv[1:]  # fix for running tests with pytest
+        else:
+            cmd_line_list = sys.argv
+        return ' '.join(cls._remove_entry_file(cmd_line_list))
+
+    @classmethod
+    def normalize(cls, cmd_line):
+        return ' '.join(cls._remove_entry_file(parse_split(cmd_line)))
 
     def __init__(self, __target: Callable = None, **sub_parsers: 'CmdParser'):
         self.target = __target  # double underscore to avoid name clashes with **sub_parsers
@@ -375,28 +394,39 @@ class CmdParser(object):
         self.kwargs = self.kwargs_class()
 
     def __call__(self, cmd_line=None):
-        cmd_line = self._prep_cmd_line(cmd_line)
+        if cmd_line is None:
+            cmd_line = self.get_cmd_from_sys()
+        else:
+            cmd_line = self.normalize(cmd_line)
         first, _, sub_cmd = cmd_line.partition(' ')
         if first == '--help':
             print(self.cmd_line_help())
         elif first == '--gui':
-            self._run_gui()
+            self.gui()
         elif first in self.sub_parsers:
-            self.sub_parsers[first](cmd_line=sub_cmd)
+            self.sub_parsers[first](sub_cmd)
         else:
             self.kwargs._parse(cmd_line)
             self.run(do_raise=False)
         return self
+
+    def cmd(self):
+        """ reads arguments from command line """
+        return self.__call__(cmd_line=None)
+
+    def gui(self):
+        """ opens the GUI """
+        return cmd_gui.ArgGui(parser=self).mainloop()
+
+    def parse(self, *cmd_line):
+        """ parses a command line from python (e.g. tests) """
+        return self.__call__(' '.join(cmd_line))
 
     def run(self, do_raise=True):
         if self.target is not None:
             self.target(**self.kwargs._as_dict())
         elif do_raise:
             raise ValueError(f"cannot call missing target")
-
-    def _run_gui(self):
-        """ starts the GUI """
-        cmd_gui.ArgGui(parser=self).mainloop()
 
     def command(self, short=False, prog=False, path=True):
         return self.kwargs._command(short, prog, path)
@@ -410,24 +440,24 @@ class CmdParser(object):
         with open(filename, mode) as f:
             f.write(cmd_line)
 
-    def usage_help(self, line_start=''):
-        file = ''  if line_start else get_entry_file(path=False) + ' '
+    def _usage_help(self, line_start=''):
+        file = '' if line_start else get_entry_file(path=False) + ' '
         line_start += '  '
         usage = f"{file}{self.kwargs_class._usage()}"
         for name, sub_parser in self.sub_parsers.items():
-            usage += f"\n{line_start}{name}: {sub_parser.usage_help(line_start)}"
+            usage += f"\n{line_start}{name}: {sub_parser._usage_help(line_start)}"
         return usage
 
-    def options_help(self, line_start=''):
+    def _options_help(self, line_start=''):
         line_start += '  '
         options = self.kwargs_class._options(line_start)
         for name, sub_parser in self.sub_parsers.items():
-            options += f"\n{line_start}{name}:{sub_parser.options_help(line_start)}"
+            options += f"\n{line_start}{name}:{sub_parser._options_help(line_start)}"
         return options
 
     def cmd_line_help(self):
         """ used by GUI to show help generated by argparse """
-        return f"usage: {self.usage_help()}\n\noptions:\n  {self.options_help()}"
+        return f"usage: {self._usage_help()}\n\noptions:\n  {self._options_help()}"
 
 
 if __name__ == '__main__':
