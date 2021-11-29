@@ -197,18 +197,22 @@ class TestArgParser(unittest.TestCase):
                        three=(['c:\\does_not_exist', '..\\unittests\\does_not_exist'],))
 
     def test_quotes(self):
-        cmds = ['-t a', "-t b", '-t "c"']
+        cmds = ['a', "b", '"c"', '"d e"',
+                '-t a', "-t b", '-t "c"', '-t "d e"']
 
         def asserter(text):
-            assert text in 'abcd'
+            assert text in 'abc' or text == 'd e'
 
         class Parser(CmdParser):
             text = Argument(str)
 
         parser = Parser(asserter)
 
+        parser('"d e"')
+
         for cmd in cmds:
             parser(cmd)
+
 
     def test_subparsers(self):
         class Ship:
