@@ -46,6 +46,14 @@ def get_typed_class_attrs(cls, base):
     return class_attrs
 
 
+def count(seq, key):
+    counter = 0
+    for s in seq:
+        if key(s):
+            counter += 1
+    return counter
+
+
 if __name__ == '__main__':
     print(get_entry_file(True))
     print(get_entry_file(False))
