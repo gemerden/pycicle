@@ -15,7 +15,7 @@ class TestArgParser(unittest.TestCase):
         class Parser(CmdParser):
             pass
 
-        Parser.parse('--help')
+        Parser().parse('--help')
         import subprocess
         subprocess.run(['python', __file__, "--help"])
 
@@ -29,7 +29,7 @@ class TestArgParser(unittest.TestCase):
         class Parser(CmdParser):
             arg = Argument(int)
 
-        Parser.parse('--arg 1', target=target)
+        Parser(target).parse('--arg 1')
         assert result == {'arg': 1}
 
     def test_basic_keywords(self):
@@ -41,13 +41,13 @@ class TestArgParser(unittest.TestCase):
 
         asserter = args_asserter(default=0, valid=4, many=[1, 2])
 
-        parser = Parser.parse('-v 4 -m "1" 2', target=asserter)
+        parser = Parser(asserter).parse('-v 4 -m "1" 2')
 
         for kwargs in dict_product(default=(-1, 0, 1), valid=(-1, 0, 1), many=([9, 11],)):
             asserter = args_asserter(**kwargs)
 
             cmd = make_test_command(Parser, kwargs)
-            parser = Parser.parse(cmd, target=asserter)
+            parser = Parser(asserter).parse(cmd)
             assert parser.command(short=False) == cmd
             assert parser.command(short=True) == make_test_command(Parser, kwargs, short=True)
 
@@ -58,7 +58,7 @@ class TestArgParser(unittest.TestCase):
         def target(**kwargs):
             assert kwargs == dict(a=[1, 2, 3, 4])
 
-        Parser.parse('1 2 3 4', target=target)
+        Parser(target).parse('1 2 3 4')
 
         class Parser(CmdParser):
             a = Argument(int, many=False)
@@ -68,14 +68,14 @@ class TestArgParser(unittest.TestCase):
         def target(**kwargs):
             assert kwargs == dict(a=1, b=[2, 3], c=4)
 
-        Parser.parse('1 2 3 4', target=target)
+        Parser(target).parse('1 2 3 4')
 
         class Parser(CmdParser):
             b = Argument(int, many=True)
             c = Argument(int, many=True)
 
         with self.assertRaises(ValueError):
-            Parser.parse('1 2', target=target)
+            Parser(target).parse('1 2')
 
         class Parser(CmdParser):
             a = Argument(int, many=False)
@@ -84,17 +84,17 @@ class TestArgParser(unittest.TestCase):
             d = Argument(int, many=False)
 
         with self.assertRaises(ValueError):
-            Parser.parse('1 2 3 4, 5', target=target)
+            Parser(target).parse('1 2 3 4, 5')
 
     def test_required(self):
         class Parser(CmdParser):
             a = Argument(int)
             b = Argument(int, default=0)
 
-        Parser.parse('-a 1')
+        Parser().parse('-a 1')
 
         with self.assertRaises(ValueError):
-            Parser.parse('-b 1')
+            Parser().parse('-b 1')  # no 'a'
 
     def test_valid(self):
         class Parser(CmdParser):
@@ -106,16 +106,16 @@ class TestArgParser(unittest.TestCase):
             cmd = make_test_command(Parser, kwargs)
             if kwargs['units'] < 0 or len(kwargs['name']) < 3:
                 with self.assertRaises(ValueError):
-                    Parser.parse(cmd, target=asserter)
+                    Parser(asserter).parse(cmd)
             else:
-                Parser.parse(cmd, target=asserter)
+                Parser(asserter).parse(cmd)
 
     def test_default(self):
         class Parser(CmdParser):
             name = Argument(str)
             units = Argument(int, default=3)
 
-        parser = Parser.parse('-n bob')
+        parser = Parser().parse('-n bob')
 
         assert parser.kwargs.name == 'bob'
         assert parser.kwargs.units == 3
@@ -126,14 +126,14 @@ class TestArgParser(unittest.TestCase):
             y = Argument(bool, default=False)
             z = Argument(bool, default=None)
 
-        parser = Parser.parse('-x')
+        parser = Parser().parse('-x')
 
         assert parser.kwargs.x is True
         assert parser.kwargs.y is False
         assert parser.kwargs.z is None
 
         with self.assertRaises(ValueError):
-            parser = Parser.parse('-z')
+            parser = Parser().parse('-z')
 
     def test_datetime_types_and_defaults(self):
         from datetime import datetime, time, date, timedelta
@@ -148,11 +148,10 @@ class TestArgParser(unittest.TestCase):
         asserter = args_asserter(**defaults)
 
         test_cmd = make_test_command(Parser, defaults)
-        parser = Parser.parse(test_cmd,
-                              target=asserter)
+        parser = Parser(asserter).parse(test_cmd)
         assert test_cmd == parser.command()
 
-        parser2 = Parser.parse(target=asserter)
+        parser2 = Parser(asserter).parse()
         assert test_cmd == parser2.command()
 
     def test_bool(self):
@@ -168,7 +167,7 @@ class TestArgParser(unittest.TestCase):
             one = Argument(int, default=1)
 
         asserter = args_asserter(one=1)
-        parser = Parser.parse(target=asserter)
+        parser = Parser(asserter).parse()
 
     def test_choice(self):
         class Parser(CmdParser):
