@@ -1,14 +1,43 @@
 # PyCicle
- A simplified argument parser for starting python programs from the command line. A GUI generator to start the same program from a Window.
+ A simplified argument parser for starting python programs from the command line. A GUI generator to start the same program from a window.
 
 ## Purpose
 
-This module has 2 main purposes:
+This module has 2 main goals:
 
-1. Simplify the configuration of command line options for your program*,
-2. Let users of your script start the program from a auto-generated GUI instead of the command line.
+1. Make the configuration of command line options for your program easy*,
+2. Allow users of your script to configure it from a GUI instead of the command line.
 
-*compared to using `argparse` or `optparse` from the standard library.
+*compared to using `argparse` or `optparse` from the python standard library.
+
+## Introduction
+
+Using the well known python `argparse` library has always been somewhat of a chore. It is well known, it works and is stable, but not very intuitive to write and the resulting code is relatively hard to read. 
+
+The first version of PyCicle was actually a thin wrapper around `argparse`, but when trying to implement more complicated command lines, the project stalled a bit ... That is why this project has its own parsing logic and follows the goals of a good command line interface, but there are some differences from the standard set by  `argparse`: in essence, the parsing logic used in PyCicle is very similar to the logic python itself uses to define and call functions. For example: positional arguments can be used on the command line as long as the parser can figure out how to assign them to the arguments defined in the parser.
+
+## Features
+
+PyCicle provides the following features:
+
+- The ability to create a command line interface as a class with class attributes (descriptors), including:
+  - *Validation*; type checking as well as custom validation are supported,
+  - *Defaults*; if a default is configured for an argument, the argument can be omitted on the command line, conversely, if no default is configured, the arguments is required,
+  - *Multiple values* for an argument; these will be parsed and result in a list of parsed values,
+  - *Positional* arguments; as long as the parser can assign values to an argument, flags like `--host` can be omitted,
+  - *Switches*; if the argument is of boolean type and the default is False, it flag can be omitted on the command line (meaning False) or be present without a value (meaning True),
+  - *Subcommands*; a command line can be extended with subcommands; like `python server.py start -h 0.0.0.0 -p 5050`, where 'start' is the subcommand,
+  - *Help*: a `help` text can be added to each argument and the doc-string of the parser class will be shown in the GUI or for the `--help` flag.
+- From the definition of a command line interface, a GUI can be auto generated (for free, without any extra configuration), including:
+  - A form (or forms) where the values for the command line can be set, with automatic validation,
+  - The ability to start the underlying program with the configuration set in the form,
+  - The ability to show (in different formats), save and load the command line,
+  - The ability to select the configuration for different subcommands,
+  - Help buttons for the command line as a whole as well as the individual arguments, partly auto-generated text, from the parser configuration.
+- Some extra features are available, like:
+  - Running the command line as an interactive prompt, for example using subcommands to call different function in a single python session.
+
+
 
 ## Installation
 
@@ -22,7 +51,6 @@ To start a server you could configure the parser as follows:
 # file: start_server.py (in this example)
 from pycicle import CmdParser, Argument, File, Choice
 
-
 def is_valid_host(ip):
     """ roughly """
     parts = list(map(int, ip.split('.')))
@@ -33,7 +61,7 @@ def is_valid_port(port):
 
 class StartServer(CmdParser):
     """
-    this is the help text for the parser
+    this part of is the help text for the parser
     """
     proto = Argument(Choice('http', 'https'), default='http', 
                      help='the protocol the server will use')
@@ -42,20 +70,21 @@ class StartServer(CmdParser):
     port = Argument(str, default=8080, valid=is_valid_port, 
                     help='port on which the server should run')
     restart = Argument(bool, default=True, 
-                       help='should the server restart after crash?')
+                       help='should the server restart after exception?')
     logfile = Argument(File('.log'), default=None, 
-                       help='logfile for the server, log to stdout if None')
+                       help='logfile for the server, log to stdout if not set')
     debug = Argument(bool, default=False, help='run in debug mode')
 
 if __name__ == '__main__':
-    def start_server(proto, host, port, restart, debug, logfile=None):
-        print(f"starting server on: {proto}://{host}:{port} with restart: {restart}, debug: {debug} and logfile: {logfile}")
+    def start_the_server(proto, host, port, restart, debug, logfile=None):
+        """ place holder function called from the parser """
+        print(f"starting server: {proto}://{host}:{port} restart: {restart}, debug: {debug}, logfile: {logfile}")
 
-    StartServer(start_server)()
+    StartServer(start_the_server)()
 
 ```
 
-Running this file from the command line with arguments in the usual style, e.g. `> python start_server.py -p 80`)  will work as usual: it will call `start_server` with the provided arguments. Calling  `> python start_server.py --gui` however opens up a window:
+Running this file from the command line with arguments in the usual style, e.g. `> python start_server.py -p 80`)  will work as usual: it will call `start_server` with the provided/default arguments. Calling  `> python start_server.py --gui` however opens up a window:
 
 ![window](pycicle/images/window.PNG)
 
@@ -107,13 +136,13 @@ parser = MyParser(printer)
 Arguments can be configured with a number of options. Only `type` is required:
 
 - `type`: The type of the argument as used by the target. This can be `int, str, bool, float, datetime, date, time, timedelta`, but there are a few more (described below) and it is possible to create your own types,
-- `many` (default=False): whether one, a specific number or any number of values are expected, so:
+- `many` (default=False): whether one or more values are expected, so:
   - `many=False` means there is a single value expected,
   - `many=True` means that any number of values is expected. They will be turned into a list,
-  - Note: the `type` option above applies to the individual elements of the list,
-- `default` (default=MISSING): a default value for the argument. It must be of type `type` or `None`. This value will be used if no other value is given on the command line, MISSING means the argument is required,
-- `valid` (default = None): an optional validator function for the argument value, allowing extra validation over the the typecheck based on `type`.  `None` (the default) , means no extra validation will take place ,
-- `help`: (default=""): a help string that will be shown when the user types `> python somefile.py -h` (or `--help`) and is show in the GUI via the `? ` buttons.
+  - Note: if `many=True` the `type` option above applies to the individual elements of the list,
+- `default` (default=MISSING): a default value for the argument. It must be of type `type` or `None`. This value will be used if no other value is given on the command line, MISSING means the argument is required on the command line,
+- `valid` (default = None): an optional validator function (returning True or False) for the argument value, allowing extra validation over the the typecheck based on `type`.  `None` (the default) , means no extra validation will take place,
+- `help`: (default=""): a help string that will be shown when the user types `> python somefile.py --help`) and is show in the GUI via the `? ` buttons.
 
 Most inconsistencies between arguments will raise an exception, but some are impossible to track, like a `valid` function conflicting with the type. This will raise an exception when running the script itself though.
 
@@ -129,7 +158,7 @@ class MyParser(CmdParser):
 
 The parser constructor has one main argument and it is intended to be positional (to avoid name conflicts; see subparsers later on):
 
-- `__target` (callable, default=None): the user callable to be called with the argument values when the parser is done, or when the 'run' button in the GUI is clicked. When there is no target, arguments are parsed (validated), but there is no target to run. For example:  `parser = Parser(some_target)`,
+- `__target` (callable, default=None): the user callable to be called with the argument values set on the command line or in the GUI. Note that the target function parameters must be the same as the command line options! When no target is given, arguments are parsed (validated), but there is no target to run. Example:  `parser = Parser(some_target)`,
 - `**subparsers`: additionally sub-parsers can be configured. These correspond to sub command on the command line. E.g. `parser = Parser(init=InitParser(some_target), run=RunParser(some_other_target))`, which from the command line would be called as `python file.py run --time 30` or similar.
 
 Note that both a target and sub-parsers can be configured. More on sub-parsers below. 
@@ -143,7 +172,7 @@ The are a couple of ways to run the parser (using `parser = Parser(some_target)`
 - `parser.parse(*cmds)`: can be used to specify individual command line arguments (usually in tests): for example `parser.parse('1', '2', '--text hello')`,
 - `parser(cmd=None)`: A shortcut using the `Parser.__call__` method. If no arguments are given, this will run as `cmd()` above, otherwise it will parse the `cmd` and run the target (if a target is configured),
 - To run the GUI from the command line, run `parser.cmd()` and argument `--gui`,  e.g.: `> python start_server.py --gui`,
-- `parser.prompt()` will start prompt and an evaluation loop taking arguments from the command line, parsing them and executing a target. This can be useful in combination with subparsers. 
+- `parser.prompt()` will start prompt and an evaluation loop taking arguments from the command line, parsing them and executing a target function. This can be useful in combination with subparsers. 
 
 #### Configuring Subparsers
 
@@ -159,7 +188,7 @@ class Ship:
         self.x = 0
         self.y = 0
         self.sunk = False
-        print(f"{self.name} was created")
+        print(f"'{self.name}' was created")
 
     def move(self, dx, dy):
         if self.sunk:
@@ -172,11 +201,6 @@ class Ship:
     def sink(self, sunk):
         self.sunk = sunk
         print(f"'{self.name}' {'sank' if sunk else 'unsank'}")
-
-    def __str__(self):
-        if self.sunk:
-            return f"'{self.name}'(sunk at {self.x}, {self.y})"
-        return f"'{self.name}'({self.x}, {self.y})"
 
 class Move(CmdParser):
     dx = Argument(int)
@@ -218,7 +242,7 @@ if __name__ == '__main__':
 
 Note that how in `ShipCommand.__init__` the sub-parsers are added to the main parser and that the sub-parsers classes are also subclasses of `CmdParser`, meaning that sub_parsers can have sub-sub-parsers, and so on.
 
-Apart from usage on a normal command line, sub-parsers can also be handy for the implementation of interactive sessions. These can be started with a call to `parser.prompt()` as seen above. This would result in a session like:
+Apart from usage on a normal command line, sub-parsers can also be handy for interactive sessions. These can be started with a call to `parser.prompt()` as seen above. This would result in a session like:
 
 ```bash
 $ python D:/documents/ship.py  #start the session
@@ -235,5 +259,13 @@ ship> quit
 Process finished with exit code 0
 ```
 
+When a sub-parser is configured, the GUI will give the option to select the sub-parser (subcommand) to configure and run:
 
+
+
+![sub_window](pycicle/images/sub_window.png)
+
+
+
+#### The Parser
 

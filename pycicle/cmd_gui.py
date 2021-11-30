@@ -227,18 +227,18 @@ class ArgWrapper(object):
         self.error = None
 
     @property
-    def kwargs(self):  # to edit the actual args
-        return self.owner.parser.kwargs
+    def keyword_arguments(self):  # to edit the actual args
+        return self.owner.parser.keyword_arguments
 
     def get_value(self):
-        value = getattr(self.kwargs,
+        value = getattr(self.keyword_arguments,
                         self.arg.name,
                         MISSING)
         self.var.set(self.arg.encode(value))
 
     def set_value(self, event=None):
         try:
-            setattr(self.kwargs,
+            setattr(self.keyword_arguments,
                     self.arg.name,
                     self.var.get().strip())
         except ValidationError as error:
@@ -257,7 +257,7 @@ class ArgWrapper(object):
         return self.error is None
 
     def del_value(self):
-        delattr(self.kwargs,
+        delattr(self.keyword_arguments,
                 self.arg.name)
         self.get_value()
         self.set_value()  # update gui
@@ -399,11 +399,11 @@ class FormFrame(BaseFrame):
 
 class CommandFrame(BaseFrame):
     button_configs = {'short': {'text': '><',
-                                'tooltip': 'short: select to see command line with short flags (like -f)'},
+                                'tooltip': 'short: select to see a short version (positional and short flag version)'},
                       'path': {'text': '.\\.\\.',
-                               'tooltip': 'path: select to see command line with full path to python script'},
+                               'tooltip': 'path: select to see command line with full path to the python script'},
                       'list': {'text': '[..]',
-                               'tooltip': 'list: show the commands on the command line as a list'}}
+                               'tooltip': 'list: show the commands on the command line in a list'}}
 
     def _init(self):
         self.selected = {'short': False, 'path': False, 'list': False}

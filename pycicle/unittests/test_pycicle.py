@@ -1,6 +1,7 @@
 import os
 import unittest
 from datetime import datetime, timedelta, date, time
+from typing import List
 
 from pycicle import CmdParser, Argument
 from pycicle import File, Folder, Choice
@@ -117,8 +118,8 @@ class TestArgParser(unittest.TestCase):
 
         parser = Parser().parse('-n bob')
 
-        assert parser.kwargs.name == 'bob'
-        assert parser.kwargs.units == 3
+        assert parser.keyword_arguments.name == 'bob'
+        assert parser.keyword_arguments.units == 3
 
     def test_missing_value(self):
         class Parser(CmdParser):
@@ -128,9 +129,9 @@ class TestArgParser(unittest.TestCase):
 
         parser = Parser().parse('-x')
 
-        assert parser.kwargs.x is True
-        assert parser.kwargs.y is False
-        assert parser.kwargs.z is None
+        assert parser.keyword_arguments.x is True
+        assert parser.keyword_arguments.y is False
+        assert parser.keyword_arguments.z is None
 
         with self.assertRaises(ValueError):
             parser = Parser().parse('-z')
@@ -213,7 +214,6 @@ class TestArgParser(unittest.TestCase):
         for cmd in cmds:
             parser(cmd)
 
-
     def test_subparsers(self):
         class Ship:
             def __init__(self, name):
@@ -268,6 +268,18 @@ class TestArgParser(unittest.TestCase):
         ship_command('move 4 5')  # sunk ships do not move
         assert ship_command.ship.x == 3
         assert ship_command.ship.y == 2
+
+    def test_from_callable(self):
+        output = []
+
+        def func(name: str, messages: list[str] = ['Hello']):
+            for message in messages:
+                output.append((name, message))
+
+
+        parser = CmdParser.from_callable(func)
+        parser('Bob -m hello goodbye')
+        assert output == [('Bob', 'hello'), ('Bob', 'goodbye')]
 
 
 class TestDescriptorConfig(unittest.TestCase):

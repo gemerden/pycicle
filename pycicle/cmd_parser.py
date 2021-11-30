@@ -3,7 +3,7 @@ import sys
 
 from dataclasses import dataclass
 from inspect import Parameter, signature
-from typing import Callable, Any
+from typing import Callable, Any, Mapping
 
 from pycicle import cmd_gui
 from pycicle.basetypes import get_type_string
@@ -22,8 +22,13 @@ class Argument(object):
     name: str = ""  # set in __set_name__
 
     type_codecs = default_type_codecs
+    base_types = (str, int, float)
 
     reserved = {'help', 'gui'}
+
+    @classmethod
+    def types(cls):
+        return cls.base_types + tuple(cls.type_codecs)  # keys of type_codecs are classes
 
     def __post_init__(self):
         """ mainly sets the encoders and decoders for the argument """
@@ -65,10 +70,10 @@ class Argument(object):
         if obj is None:
             return self
         try:
-            return obj.__dict__[self.name]
+            return obj.__arg_values__[self.name]
         except KeyError:
             if self.default is not MISSING:
-                obj.__dict__[self.name] = self.default
+                obj.__arg_values__[self.name] = self.default
                 return self.default
             raise AttributeError(f"'{self.cls.__name__}' has no attribute '{self.name}'")
 
@@ -77,21 +82,24 @@ class Argument(object):
         try:
             if self.is_encoded(value):
                 value = self.decode(value)
-            obj.__dict__[self.name] = self.validate(value)
+            obj.__arg_values__[self.name] = self.validate(value)
         except (TypeError, ValueError, AttributeError) as error:
             raise ValidationError(f"error in '{self.name}' for value '{value}': " + str(error))
 
     def __delete__(self, obj):
         """ see python descriptor documentation for the magic """
-        obj.__dict__.pop(self.name, None)
+        obj.__arg_values__.pop(self.name, None)
         if self.default is not MISSING:
-            obj.__dict__[self.name] = self.default
+            obj.__arg_values__[self.name] = self.default
 
     def validate_config(self, existing):
         """
         Called in __init_subclass__ of owner class because self.name must be set to give clearer error messages and
         python __set_name__ changes all exceptions to (somewhat vague) RuntimeError.
         """
+        if not issubclass(self.type, self.types()):
+            raise TypeError(f"invalid type '{self.type.__name__}' in '{self.full_name}'")
+
         if self.name in self.reserved:
             raise ConfigError(f"Argument name '{self.name}' is reserved")
 
@@ -202,7 +210,7 @@ class Argument(object):
             return f"{flags} ({type_}): default: {self.default}, positional: {posit}, switch: {switch}, {self.help}"
 
 
-class Kwargs(object):
+class KeywordArguments(Mapping):
     """
     This class uses the arguments to parse and run the command line or start the GUI. A few notes:
      - The class itself stores the values for all the arguments,
@@ -220,6 +228,10 @@ class Kwargs(object):
         cls._arguments = valid_arguments
 
     @classmethod
+    def _defaults(cls):
+        return {n: a.default for n, a in cls._arguments.items() if a.default is not MISSING}
+
+    @classmethod
     def _usage(cls):
         return f"{' '.join(arg.usage() for arg in cls._arguments.values())}"
 
@@ -229,11 +241,20 @@ class Kwargs(object):
         return line_start + line_start.join(arg.option() for arg in cls._arguments.values())
 
     def __init__(self, cmd_line: str = '', **kwargs):
-        super().__init__()
+        self.__arg_values__ = {}
         self._update(self._defaults())
         if cmd_line:
             self._parse(cmd_line)
         self._update(kwargs)
+
+    def __len__(self):
+        return len(self.__arg_values__)
+
+    def __iter__(self):
+        yield from self.__arg_values__
+
+    def __getitem__(self, key):
+        return self.__arg_values__[key]
 
     def _parse(self, cmd_list):
         arg_defs = type(self)._arguments
@@ -246,7 +267,7 @@ class Kwargs(object):
             for flag_or_value in cmd_list:
                 if flag_or_value in flag_lookup:  # flag found
                     current_name = flag_lookup[flag_or_value].name
-                    kwargs[current_name] = []  # stays if no values are found
+                    kwargs[current_name] = []  # stays empty if no values are found
                 else:  # value found
                     kwargs[current_name].append(flag_or_value)
             return kwargs.pop(None), kwargs  # args, kwargs
@@ -274,19 +295,12 @@ class Kwargs(object):
 
         args, kwargs = get_args_kwargs(cmd_list)
         kwargs.update(get_positional_kwargs(args))
-        # kwargs = {n: quote_join(l) for n, l in kwargs.items()}
         self._update({n: a.parse_list(kwargs.get(n, DEFAULT)) for n, a in arg_defs.items()})
 
     def _update(self, kwargs):
         """ fills self with values """
         for name, value in kwargs.items():
             setattr(self, name, value)
-
-    def _defaults(self):
-        return {n: a.default for n, a in self._arguments.items() if a.default is not MISSING}
-
-    def _as_dict(self):
-        return self.__dict__.copy()
 
     def _command(self, short=False):
         """ creates the command line that can be used to call the parser:
@@ -303,20 +317,20 @@ class CmdParser(object):
     """
     This class is the Parser API. Actual parsing takes place in the Kwargs class, where also the parsed values are stored.
     """
-    kwargs_class = None
+    keyword_argument_class = None
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__()
-        cls.kwargs_class = cls._create_kwargs_class()
-        cls.arguments = cls.kwargs_class._arguments  # convenience shortcut
+        cls.keyword_argument_class = cls._make_keyword_argument_class()
+        cls.arguments = cls.keyword_argument_class._arguments  # convenience shortcut
 
     @classmethod
-    def _create_kwargs_class(cls):
-        """ moves arguments to new Kwargs class """
-        arguments =  get_typed_class_attrs(cls, Argument)
+    def _make_keyword_argument_class(cls):
+        """ moves arguments to new KeywordArguments class """
+        arguments = get_typed_class_attrs(cls, Argument)
         for attr_name in arguments:
             delattr(cls, attr_name)
-        return type(cls.__name__ + 'Kwargs', (Kwargs,), arguments)
+        return type(cls.__name__ + 'KeywordArguments', (KeywordArguments,), arguments)
 
     @classmethod
     def load(cls, filename: str, target=None):
@@ -331,16 +345,15 @@ class CmdParser(object):
             if get_many(p):
                 try:
                     return p.annotation.__args__[0]
-                except AttributeError:
+                except (AttributeError, IndexError):
                     raise TypeError(f"List parameter must have element type (e.g. 'List[int]', not 'List' or 'list')")
-            return p.annotation
+            return p.annotation  # type exceptions will be handled by the Argument class
 
         def get_many(p):
             try:
-                p.annotation.__args__[0]
-            except (AttributeError, IndexError):
+                return p.annotation.__origin__ is list
+            except AttributeError:
                 return False
-            return True
 
         def get_default(p):
             if p.default is Parameter.empty:
@@ -351,13 +364,12 @@ class CmdParser(object):
             return ''.join(n.capitalize() for n in f.__qualname__.split('.'))
 
         arguments = {}
-        sig = signature(func)
-        for name, param in sig.parameters.items():
+        for name, param in signature(func).parameters.items():
             arguments[name] = Argument(type=get_type(param),
                                        many=get_many(param),
                                        default=get_default(param))
 
-        return type(get_class_name(func), (CmdParser,), arguments)(func)
+        return type(get_class_name(func), (CmdParser,), arguments)(func)  # create class and initialize with func as target
 
     @classmethod
     def _remove_entry_file(cls, cmd_line_list):
@@ -381,7 +393,7 @@ class CmdParser(object):
     def __init__(self, __target: Callable = None, **sub_parsers: 'CmdParser'):
         self.target = __target  # double underscore to avoid name clashes with **sub_parsers
         self.sub_parsers = sub_parsers
-        self.kwargs = self.kwargs_class()
+        self.keyword_arguments = self.keyword_argument_class()
 
     @property
     def name(self):
@@ -397,13 +409,13 @@ class CmdParser(object):
             cmd_list = self.normalize(cmd)
         first = cmd_list[0] if cmd_list else None
         if first == '--help':
-            print(self.cmd_line_help())
+            print(self.help())
         elif first == '--gui':
             self.gui()
         elif first in self.sub_parsers:
             self.sub_parsers[first](quote_join(cmd_list[1:]))
         else:
-            self.kwargs._parse(cmd_list)
+            self.keyword_arguments._parse(cmd_list)
             self.run(do_raise=False)
         return self
 
@@ -421,9 +433,15 @@ class CmdParser(object):
 
     def run(self, do_raise=True):
         if self.target is not None:
-            self.target(**self.kwargs._as_dict())
+            self.target(**self.keyword_arguments)
         elif do_raise:
             raise ValueError(f"cannot call missing target")
+
+    def command(self, short=False, file=False, path=True):
+        cmd = self.keyword_arguments._command(short)
+        if file:
+            return f"{self.file(path)} {cmd}"
+        return cmd
 
     def prompt(self, name=None):
         prompt = (name or self.name) + '>'
@@ -436,15 +454,6 @@ class CmdParser(object):
             except Exception as e:
                 print('error:', str(e))
 
-    def command(self, short=False, file=False, path=True):
-        cmd = self.kwargs._command(short)
-        if file:
-            return f"{self.file(path)} {cmd}"
-        return cmd
-
-    def as_dict(self):
-        return self.kwargs._as_dict()
-
     def save(self, filename: str, mode: str = 'w'):
         """ saves command line to a file """
         cmd_line = self.command()
@@ -454,19 +463,19 @@ class CmdParser(object):
     def _usage_help(self, line_start=''):
         file = '' if line_start else get_entry_file(path=False) + ' '
         line_start += '  '
-        usage = f"{file}{self.kwargs_class._usage()}"
+        usage = f"{file}{self.keyword_argument_class._usage()}"
         for name, sub_parser in self.sub_parsers.items():
             usage += f"\n{line_start}{name}: {sub_parser._usage_help(line_start)}"
         return usage
 
     def _options_help(self, line_start=''):
         line_start += '  '
-        options = self.kwargs_class._options(line_start)
+        options = self.keyword_argument_class._options(line_start)
         for name, sub_parser in self.sub_parsers.items():
             options += f"\n{line_start}{name}:{sub_parser._options_help(line_start)}"
         return options
 
-    def cmd_line_help(self):
+    def help(self):
         """ used by GUI to show help generated by argparse """
         return f"usage: {self._usage_help()}\n\noptions:\n  {self._options_help()}"
 

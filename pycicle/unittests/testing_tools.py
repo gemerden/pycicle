@@ -29,7 +29,7 @@ def make_test_command(parser_class, kwargs, short=False):
 
     cmd = ''
     for name, value in kwargs.items():
-        arg = getattr(parser_class.kwargs_class, name)
+        arg = getattr(parser_class.keyword_argument_class, name)
         value = create_value(arg, value)
         if short:
             if arg.positional:
