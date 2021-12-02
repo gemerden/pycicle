@@ -1,5 +1,5 @@
 from pycicle import CmdParser, Argument
-from pycicle.basetypes import File, Choice
+from pycicle.custom_types import File, Choice
 
 if __name__ == '__main__':
     from datetime import time

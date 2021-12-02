@@ -1,5 +1,5 @@
 from pycicle import CmdParser, Argument
-from pycicle.basetypes import File, Choice
+from pycicle.custom_types import File, Choice
 from pycicle.tools.utils import MISSING
 from pycicle.unittests.testing_tools import dict_product
 

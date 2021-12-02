@@ -7,7 +7,7 @@ from inspect import Parameter, signature
 from typing import Callable, Any, Mapping, Tuple, Sequence
 
 from pycicle import cmd_gui
-from pycicle.basetypes import get_type_string
+from pycicle.custom_types import get_type_string
 from pycicle.exceptions import ConfigError, ValidationError
 from pycicle.tools.utils import MISSING, DEFAULT, get_entry_file, get_typed_class_attrs, count
 from pycicle.tools.parsers import quote_split, quote_join, default_type_codecs
@@ -24,13 +24,13 @@ class Argument(object):
     name: str = ""  # set in __set_name__
 
     type_codecs = default_type_codecs.copy()
-    base_types = (str, int, float)
+    basic_types = (str, int, float)
 
     reserved = {'help', 'gui'}
 
     @classmethod
     def types(cls):
-        return cls.base_types + tuple(cls.type_codecs)  # keys of type_codecs are classes
+        return cls.basic_types + tuple(cls.type_codecs)  # keys of type_codecs are classes
 
     @classmethod
     def add_codec(cls, type, encode, decode):
@@ -245,11 +245,11 @@ class KeywordArguments(Mapping):
     def __init_subclass__(cls, **kwargs):
         """ mainly initialises the argparse.ArgumentParser and adds arguments to the parser """
         super().__init_subclass__(**kwargs)
-        valid_arguments = {}
+        valid_args = {}
         for name, argument in get_typed_class_attrs(cls, Argument).items():
-            argument.validate_config(valid_arguments)
-            valid_arguments[name] = argument
-        cls._arguments = valid_arguments
+            argument.validate_config(valid_args)
+            valid_args[name] = argument
+        cls._arguments = valid_args
 
     @classmethod
     def _defaults(cls):
@@ -442,9 +442,13 @@ class CmdParser(object):
                 self.run(do_raise=False)
         return self
 
-    def command(self, short=False, file=False, path=True):
+    def command(self, short=False, file=False, path=True, list=False):
         """ creates the command line that can be used to call the parser:
-            - short: short flags (e.g. -d) if possible """
+            - short: short flags (e.g. -d) or positional values if possible,
+            - file: prepend the file name before the command
+            - path: the file above is replaced with the full path to the file
+            - list: the command is returned  as a list string (with [])
+        """
         try:
             cmds = [arg.cmd(self.keyword_arguments, short) for arg in self.arguments.values()]
         except AttributeError:
@@ -455,6 +459,8 @@ class CmdParser(object):
                 cmd = f"{self.sub_path} {cmd}"
             if file:
                 cmd = f"{self.file(path)} {cmd}"
+            if list:
+                cmd = str(quote_split(cmd))
             return cmd
 
     def update(self, **kwargs):

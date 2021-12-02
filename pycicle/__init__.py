@@ -1,2 +1,2 @@
 from pycicle.cmd_parser import CmdParser, Argument
-from pycicle.basetypes import Choice, File, Folder
+from pycicle.custom_types import Choice, File, Folder

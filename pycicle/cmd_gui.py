@@ -9,7 +9,7 @@ from contextlib import redirect_stdout
 from tkinter import ttk
 from tkinter.filedialog import asksaveasfilename, askopenfilename, askdirectory, askopenfilenames
 
-from pycicle.basetypes import FileBase, FolderBase, ChoiceBase
+from pycicle.custom_types import FileBase, FolderBase, ChoiceBase
 from pycicle.exceptions import ValidationError
 from pycicle.help_funcs import get_parser_help, get_argument_help
 from pycicle.tools.document import short_line
@@ -120,7 +120,7 @@ class TooltipMixin(object):
 
     @tooltip.setter
     def tooltip(self, text):
-        # if text is None, no tooltip will be shown
+        # no tooltip if text is None
         self._tooltip.text = text
 
 
@@ -615,12 +615,8 @@ class ChildParserFrame(BaseParserFrame):
             wrapper.del_value()
         self.command_frame.show_command()
 
-    def command(self, short=False, path=False, list=False, file=True):
-        cmd_line = self.parser.command(short=short, file=file, path=path)
-        if cmd_line:
-            if list:
-                cmd_line = str(quote_split(cmd_line))
-        return cmd_line
+    def command(self, short=False, file=True, path=False, list=False):
+        return self.parser.command(short=short, file=file, path=path, list=list)
 
     def test(self):
         if self.parser.target is None:
