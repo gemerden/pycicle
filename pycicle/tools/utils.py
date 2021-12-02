@@ -37,6 +37,11 @@ def get_entry_file(path=True):
     return os.path.basename(file_path)
 
 
+def add_to_module(cls_or_func):
+    setattr(sys.modules[cls_or_func.__module__], cls_or_func.__name__, cls_or_func)
+    return cls_or_func
+
+
 def get_typed_class_attrs(cls, base):
     class_attrs = {}
     for c in reversed(cls.__mro__):
