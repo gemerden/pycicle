@@ -2,8 +2,9 @@ import os
 import sys
 
 from dataclasses import dataclass
+from functools import cached_property
 from inspect import Parameter, signature
-from typing import Callable, Any, Mapping
+from typing import Callable, Any, Mapping, Tuple
 
 from pycicle import cmd_gui
 from pycicle.basetypes import get_type_string
@@ -15,13 +16,14 @@ from pycicle.tools.parsers import quote_split, quote_join, default_type_codecs
 @dataclass
 class Argument(object):
     type: Callable
+    flags: Tuple[str, ...] = None
     many: bool = False
     default: Any = MISSING
     valid: Callable[[Any], bool] = None
     help: str = ""
     name: str = ""  # set in __set_name__
 
-    type_codecs = default_type_codecs
+    type_codecs = default_type_codecs.copy()
     base_types = (str, int, float)
 
     reserved = {'help', 'gui'}
@@ -30,12 +32,15 @@ class Argument(object):
     def types(cls):
         return cls.base_types + tuple(cls.type_codecs)  # keys of type_codecs are classes
 
+    @classmethod
+    def add_codec(cls, type, encode, decode):
+        cls.type_codecs[type] = (encode, decode)
+
     def __post_init__(self):
         """ mainly sets the encoders and decoders for the argument """
         encode, decode = self.type_codecs.get(self.type, (None, None))
         self._encode = encode or str  # str is default
         self._decode = decode or self.type  # self.type is default (int('3') == 3)
-        self.flags = None  # set in CmdParser.__init_subclass__
         self.positional = False  # set by CmdParser.__init_subclass__; meaning argument CAN be positional
 
     @property
@@ -63,7 +68,6 @@ class Argument(object):
         """ descriptor method to set the name to the attribute name in the owner class """
         self.cls = cls
         self.name = name
-        self.flags = ('--' + name, '-' + name[0])
 
     def __get__(self, obj, cls=None):
         """ see python descriptor docs for the magic """
@@ -112,8 +116,7 @@ class Argument(object):
             if all(e.positional and not e.switch for e in existing.values()):
                 self.positional = True
 
-        if any(self.flags[-1] == e.flags[-1] for e in existing.values()):
-            self.flags = self.flags[:-1]  # remove short flag
+        self.flags = self._validate_flags(existing)
 
     def encode(self, value):
         """ creates str version of value, takes 'many' into account """
@@ -141,6 +144,34 @@ class Argument(object):
                 return True
             raise ValidationError(f"missing value for '{self.name}'")
         return self.decode(value if self.many else value[0])
+
+    def _validate_flags(self, existing):
+        def valid_format(flag):
+            flag = flag.strip()
+            if flag.startswith('--'):
+                if len(flag) < 3:
+                    raise ConfigError(f"flag '{flag}' too short in '{self.name}'")
+            elif flag.startswith('-'):
+                if len(flag) != 2:
+                    raise ConfigError(f"single underscore flag '{flag}' should be a '-' and a character")
+            else:
+                raise ConfigError(f"invalid flag '{flag}': all flags must start with a single or double '-'")
+            return flag
+
+        def remove_existing(flags):
+            for arg in existing.values():
+                for flag in flags[:]:
+                    if flag in arg.flags:
+                        flags.remove(flag)
+            if not len(flags):
+                raise ConfigError(f"Argument '{self.name}' has no flags, all configured flags were used by other arguments")
+            return tuple(flags)
+
+        if self.flags:
+            flags = [valid_format(f) for f in self.flags]
+        else:
+            flags = ['--' + self.name, '-' + self.name[0]]
+        return remove_existing(flags)
 
     def _validate(self, value):
         def cast(value):
@@ -172,10 +203,8 @@ class Argument(object):
             raise ConfigError(f"error in '{self.full_name}' for default '{value}': " + str(error))
 
     def _cmd_flag(self, short=False):
-        """ return flag e.g. '--version', '-v' if short """
-        if len(self.flags) == 1:
-            return self.flags[0]
-        return self.flags[1] if short else self.flags[0]
+        """ return flag e.g. '--version', '-v' if short == True"""
+        return min(self.flags, key=len) if short else max(self.flags, key=len)
 
     def cmd(self, obj, short=False):
         """ creates command line part for this argument """
@@ -240,11 +269,9 @@ class KeywordArguments(Mapping):
         line_start = '\n' + line_start
         return line_start + line_start.join(arg.option() for arg in cls._arguments.values())
 
-    def __init__(self, cmd_line: str = '', **kwargs):
+    def __init__(self, **kwargs):
         self.__arg_values__ = {}
         self._update(self._defaults())
-        if cmd_line:
-            self._parse(cmd_line)
         self._update(kwargs)
 
     def __len__(self):
@@ -289,7 +316,7 @@ class KeywordArguments(Mapping):
             except IndexError:
                 raise ValueError(f"too many positional arguments found: {cmd_list}")
 
-            if len(pos_args) and len(pos_arg_defs) == 1:  # remaining
+            if len(pos_args) and len(pos_arg_defs) == 1:  # remaining; only if many is True
                 pos_kwargs[pos_arg_defs[0].name] = pos_args
             return pos_kwargs
 
@@ -301,16 +328,6 @@ class KeywordArguments(Mapping):
         """ fills self with values """
         for name, value in kwargs.items():
             setattr(self, name, value)
-
-    def _command(self, short=False):
-        """ creates the command line that can be used to call the parser:
-            - short: short flags (e.g. -d) if possible """
-        try:
-            cmds = [arg.cmd(self, short) for arg in self._arguments.values()]
-        except AttributeError:
-            return None
-        else:
-            return ' '.join(c for c in cmds if c)
 
 
 class CmdParser(object):
@@ -392,17 +409,35 @@ class CmdParser(object):
 
     def __init__(self, __target: Callable = None, **sub_parsers: 'CmdParser'):
         self.target = __target  # double underscore to avoid name clashes with **sub_parsers
-        self.sub_parsers = sub_parsers
+        self.parent = None
+        self.sub_parsers = self._link_sub_parsers(sub_parsers)
         self.keyword_arguments = self.keyword_argument_class()
+
+    def _link_sub_parsers(self, sub_parsers):
+        for name, sub_parser in sub_parsers.items():
+            if sub_parser.parent:
+                raise ValueError(f"sub_parser for '{name}' cannot be used in multiple parent parsers")
+            sub_parser.parent = self
+        return sub_parsers
 
     @property
     def name(self):
         return self.file(path=False).rpartition('.')[0]
 
+    @cached_property
+    def sub_path(self):
+        if self.parent:
+            for sub_key, sub_process in self.parent.sub_parsers.items():
+                if sub_process is self:
+                    if self.parent.sub_path:
+                        return f"{self.parent.sub_path} {sub_key}"
+                    return sub_key
+        return None
+
     def file(self, path=True):
         return get_entry_file(path)
 
-    def __call__(self, cmd=None):
+    def __call__(self, cmd=None, run=True):
         if cmd is None:
             cmd_list = self.get_cmd_from_sys()
         else:
@@ -416,7 +451,8 @@ class CmdParser(object):
             self.sub_parsers[first](quote_join(cmd_list[1:]))
         else:
             self.keyword_arguments._parse(cmd_list)
-            self.run(do_raise=False)
+            if run:
+                self.run(do_raise=False)
         return self
 
     def cmd(self):
@@ -429,7 +465,7 @@ class CmdParser(object):
 
     def parse(self, *cmds):
         """ parses a command line from python (e.g. tests) """
-        return self.__call__(' '.join(cmds))
+        return self.__call__(' '.join(cmds), run=False)
 
     def run(self, do_raise=True):
         if self.target is not None:
@@ -438,10 +474,19 @@ class CmdParser(object):
             raise ValueError(f"cannot call missing target")
 
     def command(self, short=False, file=False, path=True):
-        cmd = self.keyword_arguments._command(short)
-        if file:
-            return f"{self.file(path)} {cmd}"
-        return cmd
+        """ creates the command line that can be used to call the parser:
+            - short: short flags (e.g. -d) if possible """
+        try:
+            cmds = [arg.cmd(self.keyword_arguments, short) for arg in self.arguments.values()]
+        except AttributeError:
+            return None
+        else:
+            cmd = ' '.join(c for c in cmds if c)
+            if self.sub_path:
+                cmd = f"{self.sub_path} {cmd}"
+            if file:
+                cmd = f"{self.file(path)} {cmd}"
+            return cmd
 
     def prompt(self, name=None):
         prompt = (name or self.name) + '>'
@@ -459,6 +504,9 @@ class CmdParser(object):
         cmd_line = self.command()
         with open(filename, mode) as f:
             f.write(cmd_line)
+
+    def dict(self):
+        return dict(self.keyword_arguments)
 
     def _usage_help(self, line_start=''):
         file = '' if line_start else get_entry_file(path=False) + ' '
