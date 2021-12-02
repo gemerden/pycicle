@@ -31,8 +31,9 @@ class StartServer(CmdParser):
                      help='run in debug mode')
 
 
-if __name__ == '__main__':
-    def start_server(proto, host, port, restart, debug, logfile=None):
-        print(f"starting server on: {proto}://{host}:{port} with restart: {restart}, debug: {debug} and logfile: {logfile}")
+def start_server(proto, host, port, restart, debug, logfile=None):
+    print(f"starting server on: {proto}://{host}:{port} with restart: {restart}, debug: {debug} and logfile: {logfile}")
 
+
+if __name__ == '__main__':
     StartServer(start_server)('--gui')
