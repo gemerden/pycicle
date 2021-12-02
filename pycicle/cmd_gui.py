@@ -1,5 +1,12 @@
 import os.path
+import sys
 import tkinter as tk
+import queue
+from contextlib import redirect_stdout
+import multiprocessing as mp
+import multiprocessing.queues as mpq
+from pickle import PicklingError
+
 from tkinter import ttk
 from tkinter.filedialog import asksaveasfilename, askopenfilename, askdirectory, askopenfilenames
 
@@ -9,7 +16,7 @@ from pycicle.help_funcs import get_parser_help, get_argument_help
 from pycicle.tools.document import short_line
 from pycicle.tools.parsers import quote_split, quote_join, quotify
 from pycicle.tools.tktooltip import CreateToolTip
-from pycicle.tools.utils import MISSING, TRUE, FALSE, redirect_output
+from pycicle.tools.utils import MISSING, TRUE, FALSE
 
 
 def _get_dialog(win, title, xy, wh=None):
@@ -29,6 +36,82 @@ def show_text_dialog(win, title, text, wh, xy):
     widget.pack(expand=True, fill=tk.BOTH, padx=10, pady=10)
     widget.insert(tk.END, text)
     widget.config(state=tk.DISABLED)
+
+
+class WriteQueue(mp.queues.Queue):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs, ctx=mp.get_context())
+
+    def write(self, msg):
+        self.put_nowait(msg)
+
+    def flush(self):
+        sys.__stdout__.flush()
+
+
+class RunWindow(tk.Tk):
+    text_area_config = dict(height=25, width=80, fg='white', bg='black', font=('Helvetica', 9, 'bold'))
+
+    @classmethod
+    def run_parser(cls, parser_class, target, command, queue):
+        parser = parser_class(target)
+        with redirect_stdout(queue):
+            print('running: ', command, '\n\n')
+            parser(command)
+
+    def __init__(self, parser):
+        super().__init__()
+        self.parser = parser
+        self.eval('tk::PlaceWindow . center')
+        self.title(parser.name)
+        self.text_area = tk.Text(self, **self.text_area_config)
+        self.text_area.pack(fill=tk.BOTH, expand=1)
+        self._write_queue = WriteQueue()
+        self._run_process = None
+        self._after_job = None
+
+    def mainloop(self, *args, **kwargs):
+        self.run_process()
+        self.write_from_queue()
+        super().mainloop(*args, **kwargs)
+
+    def run_process(self):
+        self._run_process = mp.Process(target=self.run_parser,
+                                       args=(type(self.parser),
+                                             self.parser.target,
+                                             self.parser.command(file=False),
+                                             self._write_queue),
+                                       daemon=True)
+        try:
+            return self._run_process.start()
+        except Exception as e:
+            tk.messagebox.showerror("cannot run process", f"{str(e)}")
+            self.destroy()
+            return None
+
+    def stop_process(self):
+        if self._run_process:
+            if self._run_process.is_alive():
+                self._run_process.kill()
+                self._run_process.join()
+            self._run_process = None
+        if self._after_job:
+            self.after_cancel(self._after_job)
+        self._after_job = None
+
+    def destroy(self):
+        self.stop_process()
+        super().destroy()
+
+    def write_from_queue(self):
+        try:
+            while True:
+                text = self._write_queue.get_nowait()
+                self.text_area.insert(tk.END, text)
+        except queue.Empty:
+            pass
+        self._after_job = self.after(10, self.write_from_queue)
 
 
 class TooltipMixin(object):
@@ -56,8 +139,10 @@ class MultiBindMixin(object):
             self._bindings[key] = []
 
             def call_bindings(event):
+                result = None
                 for callback in self._bindings[key]:
-                    callback(event)
+                    result = result or callback(event)
+                return result
 
             super().bind(key, call_bindings)
 
@@ -133,24 +218,6 @@ class FittingField(FittingText):
     def refresh(self, event=None):
         super().refresh(event)
         self.var.set(self.get())
-
-
-class OutputDialog(tk.Toplevel):
-    """ A general class for redirecting I/O to this Text widget. """
-
-    def __init__(self, master, title='output', xy=(400, 400),
-                 wh=None, fg='white', bg='black', font=('Helvetica', 9, 'bold')):
-        super().__init__(master)
-        self.title(title)
-        if wh:
-            self.geometry(f"{wh[0]}x{wh[1]}+{xy[0]}+{xy[1]}")
-        else:
-            self.geometry(f"+{xy[0]}+{xy[1]}")
-        self.text_area = tk.Text(self, fg=fg, bg=bg, font=font)
-        self.text_area.pack()
-
-    def write(self, string):
-        self.text_area.insert(tk.END, string)
 
 
 class BaseFrame(Frame):
@@ -281,6 +348,14 @@ class ArgWrapper(object):
         self.help_button = Button(master, text='?', width=2, command=show, tooltip='more info', **kwargs)
         return self.help_button
 
+    def bind_focus_next(self, widget):
+        def focus_next(event):
+            event.widget.tk_focusNext().focus()
+            return "break"
+
+        widget.bind('<Tab>', focus_next)
+        return widget
+
     def _get_value_widget(self, master, **kwargs):
         for cls, widget_getter in self.factory.items():
             if issubclass(self.arg.type, cls):
@@ -294,16 +369,18 @@ class ArgWrapper(object):
     def _get_string_value_widget(self, master, **kwargs):
         widget = FittingField(master, variable=self.var, **kwargs)
         widget.bind('<KeyRelease>', self.set_value)
-        return widget
+        return self.bind_focus_next(widget)
 
     def _get_dialog_value_widget(self, master, command, **kwargs):
         widget = Frame(master=master)
-
         field = FittingField(widget, variable=self.var, **kwargs)
         field.bind('<KeyRelease>', self.set_value)
+        self.bind_focus_next(field)
         field.pack(side=tk.LEFT, fill=tk.X)
 
-        button = Button(widget, text='...', command=command, tooltip=f"select {self.arg.type.__name__.lower()}")
+        button = Button(widget, text='...', command=command,
+                        tooltip=f"select {self.arg.type.__name__.lower()}",
+                        takefocus=False)
         button.pack(side=tk.RIGHT, fill=tk.X, padx=(4, 0))
         return widget
 
@@ -351,7 +428,7 @@ class ArgWrapper(object):
                           textvariable=self.var,
                           state="readonly", **kwargs)
         widget.bind("<<ComboboxSelected>>", on_select)
-        return widget
+        return self.bind_focus_next(widget)
 
     def _get_multi_choice_value_widget(self, master, choices, **kwargs):
         values = quote_split(self.var.get())
@@ -391,10 +468,11 @@ class FormFrame(BaseFrame):
         for i, name in enumerate(self.column_grid_configs):
             tk.Label(self, text=name, **self.head_config) \
                 .grid(row=0, column=i)
-        for i, wrapper in enumerate(self.wrappers):
-            for j, name in enumerate(self.column_grid_configs):
-                wrapper.create_widget(self, name=name, **cell_config(name)) \
-                    .grid(row=i + 1, column=j, **grid_config(name))
+
+        for c, name in enumerate(self.column_grid_configs):
+            for r, wrapper in enumerate(self.wrappers):
+                widget = wrapper.create_widget(self, name=name, **cell_config(name))
+                widget.grid(row=r + 1, column=c, **grid_config(name))
 
 
 class CommandFrame(BaseFrame):
@@ -441,7 +519,7 @@ class CommandFrame(BaseFrame):
 class ButtonBar(BaseFrame):
     button_configs = dict(
         check={'tooltip': 'check the currently filled in values'},
-        run={'tooltip': 'run the script with these command line arguments'},
+        test={'tooltip': 'test run the script with these command line arguments'},
         save={'tooltip': 'save the command line to the same file'},
         save_as={'tooltip': 'save the command line to file'},
         load={'tooltip': 'load the command line from file'},
@@ -492,9 +570,8 @@ class SubParserSelector(BaseFrame):
 
 
 class BaseParserFrame(BaseFrame):
-    def _init(self, parser, sub_path=''):
+    def _init(self, parser):
         self.parser = parser
-        self.sub_path = sub_path
         self.config(padx=5, pady=5)
 
     @property
@@ -545,23 +622,17 @@ class ChildParserFrame(BaseParserFrame):
         self.command_frame.show_command()
 
     def command(self, short=False, path=False, list=False, file=True):
-        cmd_line = self.parser.command(short=short)
+        cmd_line = self.parser.command(short=short, file=file, path=path)
         if cmd_line:
-            cmd_line = ' '.join([self.sub_path, cmd_line])
-            if file:
-                cmd_line = ' '.join([self.parser.file(path), cmd_line])
             if list:
                 cmd_line = str(quote_split(cmd_line))
         return cmd_line
 
-    def run(self):
+    def test(self):
         if self.parser.target is None:
             tk.messagebox.showinfo('nothing to run', 'no runnable target was configured for this app')
         elif self.set_values():
-            dialog = OutputDialog(self.master)
-            with redirect_output(dialog):
-                print('running: ', self.command(), '\n')
-                self.parser(self.command(file=False))
+            RunWindow(parser=self.parser).mainloop()
 
     def save(self):
         if self.set_values():
@@ -620,15 +691,13 @@ class ParentParserFrame(BaseParserFrame):
 
     def _create_children(self):
         if len(self.arguments):
-            self.child_parser_frames[''] = ChildParserFrame(self, parser=self.parser,
-                                                            sub_path=self.sub_path)
+            self.child_parser_frames[''] = ChildParserFrame(self, parser=self.parser)
 
         for name, sub_parser in self.parser.sub_parsers.items():
-            sub_path = ' '.join([self.sub_path, name])
             if len(sub_parser.sub_parsers):
-                child_frame = ParentParserFrame(self, parser=sub_parser, sub_path=sub_path)
+                child_frame = ParentParserFrame(self, parser=sub_parser)
             else:
-                child_frame = ChildParserFrame(self, parser=sub_parser, sub_path=sub_path)
+                child_frame = ChildParserFrame(self, parser=sub_parser)
             self.child_parser_frames[name] = child_frame
         self.current_frame = self.child_parser_frames[self.selectable[0]]
         self.current_frame.grid(**self.grid_config)
