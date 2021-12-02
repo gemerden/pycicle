@@ -4,7 +4,7 @@ import sys
 from dataclasses import dataclass
 from functools import cached_property
 from inspect import Parameter, signature
-from typing import Callable, Any, Mapping, Tuple
+from typing import Callable, Any, Mapping, Tuple, Sequence
 
 from pycicle import cmd_gui
 from pycicle.basetypes import get_type_string
@@ -55,15 +55,6 @@ class Argument(object):
     def switch(self):
         return self.type is bool and self.default is False  # so self.many must also be False
 
-    def is_encoded(self, value):
-        if value is MISSING or value is DEFAULT:
-            return True
-        if self.type is str:
-            if self.many:
-                return not all(isinstance(v, str) for v in value)
-            return not isinstance(value, str)
-        return isinstance(value, str)
-
     def __set_name__(self, cls, name):
         """ descriptor method to set the name to the attribute name in the owner class """
         self.cls = cls
@@ -84,8 +75,6 @@ class Argument(object):
     def __set__(self, obj, value):
         """ see python descriptor documentation for the magic """
         try:
-            if self.is_encoded(value):
-                value = self.decode(value)
             obj.__arg_values__[self.name] = self.validate(value)
         except (TypeError, ValueError, AttributeError) as error:
             raise ValidationError(f"error in '{self.name}' for value '{value}': " + str(error))
@@ -128,13 +117,19 @@ class Argument(object):
 
     def decode(self, string_s):
         """ creates value from str, takes 'many' into account """
-        if self.type is not str and string_s == '':
-            return self.default
         if self.many:
+            if isinstance(string_s, str):
+                string_s = string_s.split()
+            if not len(string_s):
+                return self.default
             return [self._decode(s) for s in string_s]
-        return self._decode(string_s)
+        else:
+            if self.type is not str and string_s == '':
+                return self.default
+            return self._decode(string_s)
 
     def parse_list(self, value):
+        """ only used in parser """
         if value is DEFAULT:  # flag was not there
             if self.default is MISSING:
                 raise ValidationError(f"missing flag or value for '{self.name}'")
@@ -260,19 +255,10 @@ class KeywordArguments(Mapping):
     def _defaults(cls):
         return {n: a.default for n, a in cls._arguments.items() if a.default is not MISSING}
 
-    @classmethod
-    def _usage(cls):
-        return f"{' '.join(arg.usage() for arg in cls._arguments.values())}"
-
-    @classmethod
-    def _options(cls, line_start=''):
-        line_start = '\n' + line_start
-        return line_start + line_start.join(arg.option() for arg in cls._arguments.values())
-
     def __init__(self, **kwargs):
         self.__arg_values__ = {}
-        self._update(self._defaults())
-        self._update(kwargs)
+        self._update(**self._defaults())
+        self._update(**kwargs)
 
     def __len__(self):
         return len(self.__arg_values__)
@@ -283,49 +269,8 @@ class KeywordArguments(Mapping):
     def __getitem__(self, key):
         return self.__arg_values__[key]
 
-    def _parse(self, cmd_list):
-        arg_defs = type(self)._arguments
-        flag_lookup = {f: a for a in arg_defs.values() for f in a.flags}
-
-        def get_args_kwargs(cmd_list):
-            """ gets args and kwargs in encoded (str) form """
-            kwargs = {None: []}  # None key for positional arguments
-            current_name = None  # positionals come first on cmd line
-            for flag_or_value in cmd_list:
-                if flag_or_value in flag_lookup:  # flag found
-                    current_name = flag_lookup[flag_or_value].name
-                    kwargs[current_name] = []  # stays empty if no values are found
-                else:  # value found
-                    kwargs[current_name].append(flag_or_value)
-            return kwargs.pop(None), kwargs  # args, kwargs
-
-        def get_positional_kwargs(pos_args):
-            """ assigns positional string values to arguments """
-            pos_arg_defs = []
-            for name, arg_def in arg_defs.items():
-                if name in kwargs:
-                    break  # break on: first key already present
-                pos_arg_defs.append(arg_def)
-
-            pos_kwargs = {}
-            try:  # note: if len(args) == 0, index error cannot occur
-                while len(pos_args) and not pos_arg_defs[0].many:  # from left
-                    pos_kwargs[pos_arg_defs.pop(0).name] = [pos_args.pop(0)]
-                while len(pos_args) and not pos_arg_defs[-1].many:  # from right
-                    pos_kwargs[pos_arg_defs.pop(-1).name] = [pos_args.pop(-1)]
-            except IndexError:
-                raise ValueError(f"too many positional arguments found: {cmd_list}")
-
-            if len(pos_args) and len(pos_arg_defs) == 1:  # remaining; only if many is True
-                pos_kwargs[pos_arg_defs[0].name] = pos_args
-            return pos_kwargs
-
-        args, kwargs = get_args_kwargs(cmd_list)
-        kwargs.update(get_positional_kwargs(args))
-        self._update({n: a.parse_list(kwargs.get(n, DEFAULT)) for n, a in arg_defs.items()})
-
-    def _update(self, kwargs):
-        """ fills self with values """
+    def _update(self, **kwargs):
+        """ fills self with values via descriptors """
         for name, value in kwargs.items():
             setattr(self, name, value)
 
@@ -391,7 +336,8 @@ class CmdParser(object):
     @classmethod
     def _remove_entry_file(cls, cmd_line_list):
         if len(cmd_line_list):
-            if cmd_line_list[0] == get_entry_file():
+            if cmd_line_list[0] in (get_entry_file(path=False),
+                                    get_entry_file(path=True)):
                 cmd_line_list.pop(0)
         return cmd_line_list
 
@@ -420,9 +366,53 @@ class CmdParser(object):
             sub_parser.parent = self
         return sub_parsers
 
+    def _parse_list(self, cmd_list):
+        arg_defs = self.arguments
+        flag_lookup = {f: a for a in arg_defs.values() for f in a.flags}
+
+        def get_args_kwargs(cmd_list):
+            """ gets args and kwargs in encoded (str) form """
+            kwargs = {None: []}  # None key for positional arguments
+            current_name = None  # positionals come first on cmd line
+            for flag_or_value in cmd_list:
+                if flag_or_value in flag_lookup:  # flag found
+                    current_name = flag_lookup[flag_or_value].name
+                    kwargs[current_name] = []  # stays empty if no values are found
+                else:  # value found
+                    kwargs[current_name].append(flag_or_value)
+            return kwargs.pop(None), kwargs  # args, kwargs
+
+        def get_positional_kwargs(pos_args):
+            """ assigns positional string values to arguments """
+            pos_arg_defs = []
+            for name, arg_def in arg_defs.items():
+                if name in kwargs:
+                    break  # break on: first key already present
+                pos_arg_defs.append(arg_def)
+
+            pos_kwargs = {}
+            try:  # note: if len(args) == 0, index error cannot occur
+                while len(pos_args) and not pos_arg_defs[0].many:  # from left
+                    pos_kwargs[pos_arg_defs.pop(0).name] = [pos_args.pop(0)]
+                while len(pos_args) and not pos_arg_defs[-1].many:  # from right
+                    pos_kwargs[pos_arg_defs.pop(-1).name] = [pos_args.pop(-1)]
+            except IndexError:
+                raise ValueError(f"too many positional arguments found: {cmd_list}")
+
+            if len(pos_args) and len(pos_arg_defs) == 1:  # remaining; only if many is True
+                pos_kwargs[pos_arg_defs[0].name] = pos_args
+            return pos_kwargs
+
+        args, kwargs = get_args_kwargs(cmd_list)
+        kwargs.update(get_positional_kwargs(args))
+        self.update(**{n: a.parse_list(kwargs.get(n, DEFAULT)) for n, a in arg_defs.items()})
+
     @property
     def name(self):
         return self.file(path=False).rpartition('.')[0]
+
+    def file(self, path=True):
+        return get_entry_file(path)
 
     @cached_property
     def sub_path(self):
@@ -433,9 +423,6 @@ class CmdParser(object):
                         return f"{self.parent.sub_path} {sub_key}"
                     return sub_key
         return None
-
-    def file(self, path=True):
-        return get_entry_file(path)
 
     def __call__(self, cmd=None, run=True):
         if cmd is None:
@@ -450,10 +437,28 @@ class CmdParser(object):
         elif first in self.sub_parsers:
             self.sub_parsers[first](quote_join(cmd_list[1:]))
         else:
-            self.keyword_arguments._parse(cmd_list)
+            self._parse_list(cmd_list)
             if run:
                 self.run(do_raise=False)
         return self
+
+    def command(self, short=False, file=False, path=True):
+        """ creates the command line that can be used to call the parser:
+            - short: short flags (e.g. -d) if possible """
+        try:
+            cmds = [arg.cmd(self.keyword_arguments, short) for arg in self.arguments.values()]
+        except AttributeError:
+            return None
+        else:
+            cmd = ' '.join(c for c in cmds if c)
+            if self.sub_path:
+                cmd = f"{self.sub_path} {cmd}"
+            if file:
+                cmd = f"{self.file(path)} {cmd}"
+            return cmd
+
+    def update(self, **kwargs):
+        self.keyword_arguments._update(**kwargs)
 
     def cmd(self):
         """ reads arguments from command line """
@@ -472,21 +477,6 @@ class CmdParser(object):
             self.target(**self.keyword_arguments)
         elif do_raise:
             raise ValueError(f"cannot call missing target")
-
-    def command(self, short=False, file=False, path=True):
-        """ creates the command line that can be used to call the parser:
-            - short: short flags (e.g. -d) if possible """
-        try:
-            cmds = [arg.cmd(self.keyword_arguments, short) for arg in self.arguments.values()]
-        except AttributeError:
-            return None
-        else:
-            cmd = ' '.join(c for c in cmds if c)
-            if self.sub_path:
-                cmd = f"{self.sub_path} {cmd}"
-            if file:
-                cmd = f"{self.file(path)} {cmd}"
-            return cmd
 
     def prompt(self, name=None):
         prompt = (name or self.name) + '>'
@@ -508,24 +498,24 @@ class CmdParser(object):
     def dict(self):
         return dict(self.keyword_arguments)
 
+    def help(self):
+        """ used by GUI to show help generated by argparse """
+        return f"usage: {self._usage_help()}\n\noptions:\n  {self._options_help()}"
+
     def _usage_help(self, line_start=''):
         file = '' if line_start else get_entry_file(path=False) + ' '
         line_start += '  '
-        usage = f"{file}{self.keyword_argument_class._usage()}"
+        usage = f"{file}{' '.join(arg.usage() for arg in self.arguments.values())}"
         for name, sub_parser in self.sub_parsers.items():
             usage += f"\n{line_start}{name}: {sub_parser._usage_help(line_start)}"
         return usage
 
     def _options_help(self, line_start=''):
-        line_start += '  '
-        options = self.keyword_argument_class._options(line_start)
+        line_start = f"\n{line_start} "
+        options = line_start + line_start.join(arg.option() for arg in self.arguments.values())
         for name, sub_parser in self.sub_parsers.items():
             options += f"\n{line_start}{name}:{sub_parser._options_help(line_start)}"
         return options
-
-    def help(self):
-        """ used by GUI to show help generated by argparse """
-        return f"usage: {self._usage_help()}\n\noptions:\n  {self._options_help()}"
 
 
 if __name__ == '__main__':
