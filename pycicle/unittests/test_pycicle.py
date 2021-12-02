@@ -30,10 +30,29 @@ class TestArgParser(unittest.TestCase):
         class Parser(CmdParser):
             arg = Argument(int)
 
-        Parser(target).parse('--arg 1')
+        Parser(target)('--arg 1')
         assert result == {'arg': 1}
 
     def test_basic_keywords(self):
+
+        class Parser(CmdParser):
+            default = Argument(int, default=0)
+            valid = Argument(int, valid=lambda v: v < 10)
+            many = Argument(int, many=True)
+
+        asserter = args_asserter(default=0, valid=4, many=[1, 2])
+
+        parser = Parser(asserter).parse('-v 4 -m "1" 2')
+
+        for kwargs in dict_product(default=(-1, 0, 1), valid=(-1, 0, 1), many=([9, 11],)):
+            asserter = args_asserter(**kwargs)
+
+            cmd = make_test_command(Parser, kwargs)
+            parser = Parser(asserter).parse(cmd)
+            assert parser.command(short=False) == cmd
+            assert parser.command(short=True) == make_test_command(Parser, kwargs, short=True)
+
+    def test_flags(self):
 
         class Parser(CmdParser):
             default = Argument(int, default=0)
