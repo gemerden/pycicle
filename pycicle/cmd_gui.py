@@ -2,10 +2,9 @@ import os.path
 import sys
 import tkinter as tk
 import queue
+from queue import Queue
+from threading import Thread
 from contextlib import redirect_stdout
-import multiprocessing as mp
-import multiprocessing.queues as mpq
-from pickle import PicklingError
 
 from tkinter import ttk
 from tkinter.filedialog import asksaveasfilename, askopenfilename, askdirectory, askopenfilenames
@@ -38,11 +37,7 @@ def show_text_dialog(win, title, text, wh, xy):
     widget.config(state=tk.DISABLED)
 
 
-class WriteQueue(mp.queues.Queue):
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs, ctx=mp.get_context())
-
+class WriteQueue(Queue):
     def write(self, msg):
         self.put_nowait(msg)
 
@@ -68,40 +63,40 @@ class RunWindow(tk.Tk):
         self.text_area = tk.Text(self, **self.text_area_config)
         self.text_area.pack(fill=tk.BOTH, expand=1)
         self._write_queue = WriteQueue()
-        self._run_process = None
+        self._run_thread = None
         self._after_job = None
 
     def mainloop(self, *args, **kwargs):
-        self.run_process()
+        self.run_thread()
         self.write_from_queue()
         super().mainloop(*args, **kwargs)
 
-    def run_process(self):
-        self._run_process = mp.Process(target=self.run_parser,
-                                       args=(type(self.parser),
-                                             self.parser.target,
-                                             self.parser.command(file=False),
-                                             self._write_queue),
-                                       daemon=True)
+    def run_thread(self):
+        self._run_thread = Thread(target=self.run_parser,
+                                  args=(type(self.parser),
+                                        self.parser.target,
+                                        self.parser.command(file=False),
+                                        self._write_queue),
+                                  daemon=True)
         try:
-            return self._run_process.start()
+            return self._run_thread.start()
         except Exception as e:
             tk.messagebox.showerror("cannot run process", f"{str(e)}")
             self.destroy()
             return None
 
-    def stop_process(self):
-        if self._run_process:
-            if self._run_process.is_alive():
-                self._run_process.kill()
-                self._run_process.join()
-            self._run_process = None
+    def stop_thread(self):
+        if self._run_thread:
+            if self._run_thread.is_alive():
+                self._run_thread.kill()
+                self._run_thread.join()
+            self._run_thread = None
         if self._after_job:
             self.after_cancel(self._after_job)
         self._after_job = None
 
     def destroy(self):
-        self.stop_process()
+        self.stop_thread()
         super().destroy()
 
     def write_from_queue(self):
@@ -299,15 +294,14 @@ class ArgWrapper(object):
 
     def get_value(self):
         value = getattr(self.keyword_arguments,
-                        self.arg.name,
-                        MISSING)
+                        self.arg.name, MISSING)
         self.var.set(self.arg.encode(value))
 
     def set_value(self, event=None):
         try:
+            value = self.arg.decode(self.var.get())
             setattr(self.keyword_arguments,
-                    self.arg.name,
-                    self.var.get().strip())
+                    self.arg.name, value)
         except ValidationError as error:
             if not isinstance(self.widget, ttk.Combobox):
                 self.widget.config(**self.alert_config)
@@ -718,9 +712,8 @@ class ArgGui(BaseFrame):
     def _init(self, root_parser):
         self.root_parser = root_parser
         self.master.title(f"PyCicle: {type(root_parser).__name__}")
-        icon = tk.PhotoImage(file=self.icon_file)
-        self.master.iconphoto(False, icon)
-        self.grid(row=0, column=0, padx=10, pady=5)
+        self.master.iconphoto(False, tk.PhotoImage(file=self.icon_file))
+        self.grid(row=0, column=0, padx=5, pady=5)
 
     def create_widgets(self):
         if len(self.root_parser.sub_parsers):
