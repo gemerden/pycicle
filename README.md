@@ -21,23 +21,45 @@ The first version of PyCicle was actually a thin wrapper around `argparse`, but 
 PyCicle provides the following features:
 
 - The ability to create a command line interface as a class with class attributes (descriptors), including:
+
   - *Validation*; type checking as well as custom validation are supported,
   - *Defaults*; if a default is configured for an argument, the argument can be omitted on the command line, conversely, if no default is configured, the arguments is required,
   - *Multiple values* for an argument; these will be parsed and result in a list of parsed values,
-  - *Positional* arguments; as long as the parser can assign values to an argument, flags like `--host` can be omitted,
-  - *Switches*; if the argument is of boolean type and the default is False, it flag can be omitted on the command line (meaning False) or be present without a value (meaning True),
+  - *Positional* arguments; as long as the parser can find the argument to assign the values to, flags can be omitted,
+  - *Switches*; if the argument is of boolean type and the default is False, its flag can be omitted on the command line (meaning False) or be present without a value (meaning True),
   - *Subcommands*; a command line can be extended with subcommands; like `python server.py start -h 0.0.0.0 -p 5050`, where 'start' is the subcommand,
   - *Help*: a `help` text can be added to each argument and the doc-string of the parser class will be shown in the GUI or for the `--help` flag.
+
 - From the definition of a command line interface, a GUI can be auto generated (for free, without any extra configuration), including:
+
   - A form (or forms) where the values for the command line can be set, with automatic validation,
   - The ability to start the underlying program with the configuration set in the form,
   - The ability to show (in different formats), save and load the command line,
   - The ability to select the configuration for different subcommands,
   - Help buttons for the command line as a whole as well as the individual arguments, partly auto-generated text, from the parser configuration.
-- Some extra features are available, like:
-  - Running the command line as an interactive prompt, for example using subcommands to call different function in a single python session.
 
+- Some extras are available, like:
 
+  - Running the command line as an interactive prompt, for example using subcommands to call different function in a single python session,
+
+  - Creating a command line parser from an annotated function definition, like:
+
+    ```python
+    # talk.py
+    from pycicle import CmdParser
+    
+    def talk(name: str, messages: list[str] = ('Hello',)):
+        for message in messages:
+            print(f"{name} says '{message}'")
+    
+    CmdParser.from_callable(talk).cmd()        
+    ```
+
+    with `> python talk.py --gui` shows:
+
+    ![](pycicle/images/talk.PNG)
+
+​				or could be called with e.g. `> python talk.py Bob -m Hello Goodbye`.
 
 ## Installation
 
@@ -136,11 +158,12 @@ parser = MyParser(printer)
 Arguments can be configured with a number of options. Only `type` is required:
 
 - `type`: The type of the argument as used by the target. This can be `int, str, bool, float, datetime, date, time, timedelta`, but there are a few more (described below) and it is possible to create your own types,
+- `flags` (default=None): override the default flags; the default flags are `--[argument_name]` and `-[argument_name[0]]`,  so argument 'host' would have flags `--host` and `-h`,
 - `many` (default=False): whether one or more values are expected, so:
   - `many=False` means there is a single value expected,
   - `many=True` means that any number of values is expected. They will be turned into a list,
   - Note: if `many=True` the `type` option above applies to the individual elements of the list,
-- `default` (default=MISSING): a default value for the argument. It must be of type `type` or `None`. This value will be used if no other value is given on the command line, MISSING means the argument is required on the command line,
+- `default` (default=MISSING): a default value for the argument. It must be of type `type` or `None`. This value will be used if no value is given on the command line, MISSING means the argument is required on the command line,
 - `valid` (default = None): an optional validator function (returning True or False) for the argument value, allowing extra validation over the the typecheck based on `type`.  `None` (the default) , means no extra validation will take place,
 - `help`: (default=""): a help string that will be shown when the user types `> python somefile.py --help`) and is show in the GUI via the `? ` buttons.
 
@@ -150,7 +173,7 @@ A fully configured Argument could look like this:
 
 ```python
 class MyParser(CmdParser):
-    my_argument = Argument(int, many=True, default=[1, 2, 3], valid=lambda v: v[0] == 1,
+    some_arg = Argument(int, flags=('-a', '--arg'), many=True, default=[1, 2], valid=lambda v: len(v) == 2,
                            help='this is a pretty random argument')
 ```
 
@@ -159,7 +182,16 @@ class MyParser(CmdParser):
 The parser constructor has one main argument and it is intended to be positional (to avoid name conflicts; see subparsers later on):
 
 - `__target` (callable, default=None): the user callable to be called with the argument values set on the command line or in the GUI. Note that the target function parameters must be the same as the command line options! When no target is given, arguments are parsed (validated), but there is no target to run. Example:  `parser = Parser(some_target)`,
-- `**subparsers`: additionally sub-parsers can be configured. These correspond to sub command on the command line. E.g. `parser = Parser(init=InitParser(some_target), run=RunParser(some_other_target))`, which from the command line would be called as `python file.py run --time 30` or similar.
+
+- `**subparsers`: additionally sub-parsers can be configured. These correspond to sub command on the command line. For example:
+
+  ```python
+  parser = MainParser(a_target,
+                      init=InitParser(some_target),
+                      run=RunParser(some_other_target))
+  ```
+
+  which from the command line would be called as `python file.py --name Bob` , `python file.py init --rank 3` or `python file.py run --time 30` (but with appropriate arguments).
 
 Note that both a target and sub-parsers can be configured. More on sub-parsers below. 
 
