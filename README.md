@@ -409,9 +409,12 @@ Given a parser configuration, some rules are applied to the actual command line:
 
 1. Flags (like `--host` or `-h`) and values must be separated by spaces (' '),
 2. Positional arguments on the command line are interpreted in the order the arguments are defined, 
-3. All positional arguments must be placed before all arguments with flags on the command line,
+3. All positional arguments must be placed before all arguments with flags on the command line; the order of flagged arguments does not matter,
 4. Positional arguments on the command line can (don't have to) be used until the second argument with multiple values (`many=True`), after that the parser cannot determine which value to assign to which argument and the parser will raise an Exception. This corresponds to the logic of python function definitions,
 5. Boolean arguments (`type=bool`) with default False (`default=False`) can be used without value; if the flag is present the parser interprets this as True, otherwise it is interpreted as False. If you want the flag to mean other values, this translation must be done in the target function, 
 6. If you want strings with spaces on the command line to be handled as single strings, put them between double quotes, like `"Hello, Goodbye"`,
 7. `gui` and `help` are reserved names and cannot be used as argument names, neither can arguments names start with an underscore '_' (`--gui` is used to start the GUI and `--help` is used to show argument help from the command line). 
 
+## Contributions
+
+Any contributions, comments, issues, pull requests etc. are very welcome!
