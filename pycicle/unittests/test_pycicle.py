@@ -196,6 +196,26 @@ class TestArgParser(unittest.TestCase):
 
         assert_product(Parser, one=(1, 2), two=([1, 3], [2, 1]))
 
+    def test_flags_config(self):
+        class Parser(CmdParser):
+            one = Argument(int, flags=('-x', '--xxx'))
+            two = Argument(int, flags=('-y', '--yyy'))
+
+        assert Parser.keyword_argument_class.one.flags == ('-x', '--xxx')
+        assert Parser.keyword_argument_class.two.flags == ('-y', '--yyy')
+
+        class Parser(CmdParser):
+            one = Argument(int, flags=('-x', '--xxx'))
+            two = Argument(int, flags=('-x', '--yyy'))
+
+        assert Parser.keyword_argument_class.one.flags == ('-x', '--xxx')
+        assert Parser.keyword_argument_class.two.flags == ('--yyy',)  # doubles removed
+
+        with self.assertRaises(ConfigError):
+            class Parser(CmdParser):
+                one = Argument(int, flags=('-x', '--xxx'))
+                two = Argument(int, flags=('-x',))  # double removed, no flags left
+
     def test_files(self):
         class Parser(CmdParser):
             one = Argument(File('.txt', existing=False))
