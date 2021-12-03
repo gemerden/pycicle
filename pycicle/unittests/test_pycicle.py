@@ -308,13 +308,24 @@ class TestArgParser(unittest.TestCase):
         assert ship_command.ship.x == 3
         assert ship_command.ship.y == 2
 
+    def test_no_arguments(self):
+        class Parser(CmdParser):
+            pass
+
+        output = []
+
+        def target():
+            output.append(0)
+
+        Parser(target).parse(run=True)
+        assert output == [0]
+
     def test_from_callable(self):
         output = []
 
         def func(name: str, messages: list[str] = ['Hello']):
             for message in messages:
                 output.append((name, message))
-
 
         parser = CmdParser.from_callable(func)
         parser('Bob -m hello goodbye')

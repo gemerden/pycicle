@@ -555,6 +555,7 @@ class SubParserSelector(BaseFrame):
 
         self.selector = Combobox(self,
                                  values=self.selectable,
+                                 tooltip='select sub parser to configure',
                                  textvariable=self.selected,
                                  state="readonly", **self.selector_config)
         self.selector.bind("<<ComboboxSelected>>", on_select)

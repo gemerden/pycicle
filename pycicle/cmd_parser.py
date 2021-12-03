@@ -474,9 +474,9 @@ class CmdParser(object):
         """ opens the GUI """
         return cmd_gui.ArgGui(parser=self).mainloop()
 
-    def parse(self, *cmds):
+    def parse(self, *cmds, run=False):
         """ parses a command line from python (e.g. tests) """
-        return self.__call__(' '.join(cmds), run=False)
+        return self.__call__(' '.join(cmds), run=run)
 
     def run(self, do_raise=True):
         """ runs the target with current argument values """

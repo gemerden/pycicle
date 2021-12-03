@@ -40,7 +40,7 @@ class Sink(CmdParser):
 
 
 class Quit(CmdParser):
-    quit = Argument(bool, default=True)
+    pass  # no argument: quit is quit
 
 
 class ShipCommand(CmdParser):
@@ -62,9 +62,8 @@ class ShipCommand(CmdParser):
     def sink(self, sunk):
         self.ship.sink(sunk)
 
-    def quit(self, quit):
-        if quit:
-            raise KeyboardInterrupt
+    def quit(self):
+        raise KeyboardInterrupt
 
 
 if __name__ == '__main__':
