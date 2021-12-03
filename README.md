@@ -22,7 +22,7 @@ PyCicle can be easily installed with pip using `pip install pycicle`.
 
 ## Example
 
-To start a server you could configure the parser as follows:
+To start a server you could configure the parser as follows (we will break it down in later sections; to get started, see "Instruction"):
 
 ```python
 # start_server.py
