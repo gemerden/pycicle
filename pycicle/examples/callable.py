@@ -1,9 +1,7 @@
 from pycicle import CmdParser
 
-
-def func(name: str, messages: list[str] = ('Hello',)):
+def talk(name: str, messages: list[str] = ('Hello',)):
     for m in messages:
         print(f"{name} says '{m}'")
 
-parser = CmdParser.from_callable(func)
-parser('-n Bob -m hello goodbye')
+CmdParser.from_callable(talk).gui()
