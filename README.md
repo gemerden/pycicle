@@ -345,7 +345,12 @@ class Sink(CmdParser):
     sunk = Argument(bool, default=True)
 
 class Quit(CmdParser):
-    pass  # no argument: quit is quit
+    # no arguments: quit is quit
+    def __init__(self):
+        super().__init__(self.quit)
+
+    def quit(self):
+        raise KeyboardInterrupt
 
 class ShipCommand(CmdParser):
     name = Argument(str)
@@ -354,7 +359,7 @@ class ShipCommand(CmdParser):
         super().__init__(self.create,
                          move=Move(self.move),
                          sink=Sink(self.sink),
-                         quit=Quit(self.quit))
+                         quit=Quit())
         self.ship = None
 
     def create(self, name):
@@ -365,9 +370,6 @@ class ShipCommand(CmdParser):
 
     def sink(self, sunk):
         self.ship.sink(sunk)
-
-    def quit(self):
-        raise KeyboardInterrupt
 
 if __name__ == '__main__':
     ship_command = ShipCommand()
