@@ -24,7 +24,7 @@ class Argument(object):
     name: str = ""  # set in __set_name__
 
     type_codecs = default_type_codecs.copy()
-    basic_types = (str, int, float)
+    basic_types = (str, int, float, bool)
 
     reserved = {'help', 'gui'}
 
@@ -33,7 +33,7 @@ class Argument(object):
         return cls.basic_types + tuple(cls.type_codecs)  # keys of type_codecs are classes
 
     @classmethod
-    def add_codec(cls, type, encode, decode):
+    def set_codec(cls, type, encode, decode):
         cls.type_codecs[type] = (encode, decode)
 
     def __post_init__(self):
@@ -41,7 +41,7 @@ class Argument(object):
         encode, decode = self.type_codecs.get(self.type, (None, None))
         self._encode = encode or str  # str is default
         self._decode = decode or self.type  # self.type is default (int('3') == 3)
-        self.positional = False  # set by CmdParser.__init_subclass__; meaning argument CAN be positional
+        self.positional = False  # set by validate_config(); meaning argument CAN be positional
 
     @property
     def full_name(self):
@@ -103,7 +103,7 @@ class Argument(object):
 
         if count(existing.values(), key=lambda v: v.many) <= 1:
             if all(e.positional and not e.switch for e in existing.values()):
-                self.positional = True
+                self.positional = True  # this means the argument CAN be positional
 
         self.flags = self._validate_flags(existing)
 
@@ -216,7 +216,7 @@ class Argument(object):
         return f"{self._cmd_flag(short)} {cmd_value}"
 
     def usage(self):
-        usage = self.flags[0]
+        usage = self._cmd_flag()
         if self.many:
             usage = usage + ' ...'
         if not self.required:
@@ -240,7 +240,7 @@ class KeywordArguments(Mapping):
      - The class itself stores the values for all the arguments,
      - To enable this usage, all methods, class and other attributes start with an underscore,
     """
-    _arguments = None  # set in __init_subclass__
+    _arguments = None  # overridden in __init_subclass__
 
     def __init_subclass__(cls, **kwargs):
         """ mainly initialises the argparse.ArgumentParser and adds arguments to the parser """
@@ -291,7 +291,7 @@ class CmdParser(object):
         """ moves arguments to new KeywordArguments class """
         arguments = get_typed_class_attrs(cls, Argument)
         for attr_name in arguments:
-            delattr(cls, attr_name)
+            delattr(cls, attr_name)  # remove from this class
         return type(cls.__name__ + 'KeywordArguments', (KeywordArguments,), arguments)
 
     @classmethod
@@ -344,10 +344,10 @@ class CmdParser(object):
     @classmethod
     def get_cmd_from_sys(cls):
         if "PYTEST_CURRENT_TEST" in os.environ:
-            cmd_line_list = sys.argv[1:]  # fix for running tests with pytest
+            cmd_list = sys.argv[1:]  # fix for running tests with pytest
         else:
-            cmd_line_list = sys.argv
-        return cls._remove_entry_file(cmd_line_list)
+            cmd_list = sys.argv
+        return cls._remove_entry_file(cmd_list)
 
     @classmethod
     def normalize(cls, cmd_line):
@@ -362,7 +362,7 @@ class CmdParser(object):
     def _link_sub_parsers(self, sub_parsers):
         for name, sub_parser in sub_parsers.items():
             if sub_parser.parent:
-                raise ValueError(f"sub_parser for '{name}' cannot be used in multiple parent parsers")
+                raise ValueError(f"sub_parser instance for '{name}' cannot be used in multiple parent parsers")
             sub_parser.parent = self
         return sub_parsers
 
@@ -497,9 +497,9 @@ class CmdParser(object):
             except Exception as e:
                 print('error:', str(e))
 
-    def save(self, filename: str):
+    def save(self, filename: str, **kwargs):
         with open(filename, 'w') as f:
-            f.write(self.command())
+            f.write(self.command(**kwargs))
 
     def dict(self):
         return dict(self.keyword_arguments)
