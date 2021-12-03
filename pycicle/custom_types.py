@@ -2,7 +2,7 @@ from pathlib import Path
 
 
 class FileFolderBase(str):
-    existing = False  # indicates whether file or folder is expected to exist
+    existing = None  # indicates whether file or folder is expected to exist, None means don't care
     does_exist = None  # function to test for existence, implemented in subclasses
 
     @classmethod
@@ -15,8 +15,10 @@ class FileFolderBase(str):
         if ',' in string:
             raise ValueError(f"file or folder '{string}' contains a ','")
         path = Path(string)
-        if cls.existing and not cls.does_exist(path):
+        if cls.existing is True and not cls.does_exist(path):
             raise ValueError(f"file: {str(path)} does not exist")
+        if cls.existing is False and cls.does_exist(path):
+            raise ValueError(f"file: {str(path)} already exists")
         return super().__new__(cls, path)
 
 
@@ -38,9 +40,14 @@ class FileBase(FileFolderBase):
     def string(cls, short=False):
         if short:
             return cls.__name__
-        if cls.extensions:
-            return f"File({', '.join(cls.extensions)}, existing={cls.existing})"
-        return f"File(existing={cls.existing})"
+        if cls.existing is None:
+            if cls.extensions:
+                return f"File({', '.join(cls.extensions)})"
+            return f"File()"
+        else:
+            if cls.extensions:
+                return f"File({', '.join(cls.extensions)}, existing={cls.existing})"
+            return f"File(existing={cls.existing})"
 
     def __new__(cls, string=''):
         _, _, ext = string.rpartition('.')
@@ -56,7 +63,7 @@ class FolderBase(FileFolderBase):
     def string(cls, short=False):
         if short:
             return cls.__name__
-        return f"Folder(existing={cls.existing})"
+        return f"Folder()" if cls.existing is None else f"Folder(existing={cls.existing})"
 
 
 def File(*extensions, existing=False):
