@@ -513,7 +513,7 @@ class CommandFrame(BaseFrame):
 class ButtonBar(BaseFrame):
     button_configs = dict(
         check={'tooltip': 'check the currently filled in values'},
-        test={'tooltip': 'test run the script with these command line arguments'},
+        run={'tooltip': 'test run the script with these command line arguments'},
         save={'tooltip': 'save the command line to the same file'},
         save_as={'tooltip': 'save the command line to file'},
         load={'tooltip': 'load the command line from file'},
@@ -618,7 +618,7 @@ class ChildParserFrame(BaseParserFrame):
     def command(self, short=False, file=True, path=False, list=False):
         return self.parser.command(short=short, file=file, path=path, list=list)
 
-    def test(self):
+    def run(self):
         if self.parser.target is None:
             tk.messagebox.showinfo('nothing to run', 'no runnable target was configured for this app')
         elif self.set_values():
