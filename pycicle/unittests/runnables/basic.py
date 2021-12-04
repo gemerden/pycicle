@@ -7,6 +7,6 @@ class Parser(CmdParser):
 
 
 if __name__ == '__main__':
-    def run(aaa, bbb):
+    def target(aaa, bbb):
         print(f"aaa = {aaa}, bbb = {bbb}")
-    Parser(run)()
+    Parser(target).cmd()

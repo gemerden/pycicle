@@ -56,7 +56,7 @@ def assert_product(parser_class, **iterators):
     for kwargs in dict_product(**iterators):
         asserter = args_asserter(**kwargs)
         test_cmd = make_test_command(parser_class, kwargs)
-        parser = parser_class(asserter)(test_cmd)
+        parser = parser_class(asserter).parse(test_cmd, run=True)
         assert test_cmd == parser.command()
 
 

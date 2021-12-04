@@ -248,10 +248,10 @@ class TestArgParser(unittest.TestCase):
 
         parser = Parser(asserter)
 
-        parser('"d e"')
+        parser.parse('"d e"').run()
 
         for cmd in cmds:
-            parser(cmd)
+            parser.parse(cmd).run()
 
     def test_subparsers(self):
         class Ship:
@@ -328,7 +328,7 @@ class TestArgParser(unittest.TestCase):
                 output.append((name, message))
 
         parser = CmdParser.from_callable(func)
-        parser('Bob -m hello goodbye')
+        parser.parse('Bob -m hello goodbye').run()
         assert output == [('Bob', 'hello'), ('Bob', 'goodbye')]
 
 

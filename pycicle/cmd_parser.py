@@ -77,7 +77,7 @@ class Argument(object):
         try:
             obj.__arg_values__[self.name] = self.validate(value)
         except (TypeError, ValueError, AttributeError) as error:
-            raise ValidationError(f"error in '{self.name}' for value '{value}': " + str(error))
+            raise ValidationError(f"error in '{self.name}' for value '{value}': {str(error)}")
 
     def __delete__(self, obj):
         """ see python descriptor documentation for the magic """
@@ -245,11 +245,11 @@ class KeywordArguments(Mapping):
     def __init_subclass__(cls, **kwargs):
         """ mainly initialises the argparse.ArgumentParser and adds arguments to the parser """
         super().__init_subclass__(**kwargs)
-        valid_args = {}
+        valid_arguments = {}
         for name, argument in get_typed_class_attrs(cls, Argument).items():
-            argument.validate_config(valid_args)
-            valid_args[name] = argument
-        cls._arguments = valid_args
+            argument.validate_config(existing=valid_arguments)
+            valid_arguments[name] = argument
+        cls._arguments = valid_arguments
 
     @classmethod
     def _defaults(cls):
@@ -268,6 +268,11 @@ class KeywordArguments(Mapping):
 
     def __getitem__(self, key):
         return self.__arg_values__[key]
+
+    def __setattr__(self, name, value):
+        if name != '__arg_values__' and name not in self._arguments:
+            raise AttributeError(f"'{name}' is not an parser argument")
+        super().__setattr__(name, value)
 
     def _update(self, **kwargs):
         """ fills self with values via descriptors """
@@ -293,6 +298,26 @@ class CmdParser(object):
         for attr_name in arguments:
             delattr(cls, attr_name)  # remove from this class
         return type(cls.__name__ + 'KeywordArguments', (KeywordArguments,), arguments)
+
+    @classmethod
+    def _remove_entry_file(cls, cmd_line_list):
+        if len(cmd_line_list):
+            if cmd_line_list[0] in (get_entry_file(path=False),
+                                    get_entry_file(path=True)):
+                del cmd_line_list[0]
+        return cmd_line_list
+
+    @classmethod
+    def _normalized_split(cls, cmd_line):
+        return cls._remove_entry_file(quote_split(cmd_line))
+
+    @classmethod
+    def get_cmd_from_sys(cls):
+        if "PYTEST_CURRENT_TEST" in os.environ:
+            cmd_list = sys.argv[1:]  # fix for running tests with pytest
+        else:
+            cmd_list = sys.argv
+        return cls._remove_entry_file(cmd_list)
 
     @classmethod
     def load(cls, filename: str, target=None):
@@ -333,26 +358,6 @@ class CmdParser(object):
 
         return type(get_class_name(func), (CmdParser,), arguments)(func)  # create class and initialize with func as target
 
-    @classmethod
-    def _remove_entry_file(cls, cmd_line_list):
-        if len(cmd_line_list):
-            if cmd_line_list[0] in (get_entry_file(path=False),
-                                    get_entry_file(path=True)):
-                cmd_line_list.pop(0)
-        return cmd_line_list
-
-    @classmethod
-    def get_cmd_from_sys(cls):
-        if "PYTEST_CURRENT_TEST" in os.environ:
-            cmd_list = sys.argv[1:]  # fix for running tests with pytest
-        else:
-            cmd_list = sys.argv
-        return cls._remove_entry_file(cmd_list)
-
-    @classmethod
-    def normalize(cls, cmd_line):
-        return cls._remove_entry_file(quote_split(cmd_line))
-
     def __init__(self, __target: Callable = None, **sub_parsers: 'CmdParser'):
         self.target = __target  # double underscore to avoid name clashes with **sub_parsers
         self.parent = None
@@ -366,7 +371,21 @@ class CmdParser(object):
             sub_parser.parent = self
         return sub_parsers
 
-    def _parse_list(self, cmd_list):
+    def _delegate_parse(self, cmd_list, run):
+        first = cmd_list[0] if cmd_list else None
+        if first == '--help':
+            print(self.help())
+        elif first == '--gui':
+            self.gui()
+        elif first in self.sub_parsers:
+            self.sub_parsers[first].parse(*cmd_list[1:], run=run)
+        else:
+            self._parse_command_list(cmd_list)
+            if run:
+                self.run(do_raise=False)
+        return self
+
+    def _parse_command_list(self, cmd_list):
         arg_defs = self.arguments
         flag_lookup = {f: a for a in arg_defs.values() for f in a.flags}
 
@@ -424,23 +443,45 @@ class CmdParser(object):
                     return sub_key
         return None
 
-    def __call__(self, cmd=None, run=True):
-        if cmd is None:
-            cmd_list = self.get_cmd_from_sys()
-        else:
-            cmd_list = self.normalize(cmd)
-        first = cmd_list[0] if cmd_list else None
-        if first == '--help':
-            print(self.help())
-        elif first == '--gui':
-            self.gui()
-        elif first in self.sub_parsers:
-            self.sub_parsers[first](quote_join(cmd_list[1:]))
-        else:
-            self._parse_list(cmd_list)
-            if run:
-                self.run(do_raise=False)
-        return self
+    def update(self, **kwargs):
+        self.keyword_arguments._update(**kwargs)
+
+    def cmd(self):
+        """ reads arguments from command line """
+        cmd_list = self.get_cmd_from_sys()
+        return self._delegate_parse(cmd_list, run=True)
+
+    def parse(self, *cmds, run=False):
+        """ parses a command line from python (e.g. tests) """
+        cmd_list = self._normalized_split(' '.join(cmds))
+        return self._delegate_parse(cmd_list, run=run)
+
+    def __call__(self, cmd, run=True):
+        """ shortcut """
+        return self.parse(cmd, run=run)
+
+    def gui(self):
+        """ opens the GUI """
+        return cmd_gui.ArgGui(parser=self).mainloop()
+
+    def run(self, do_raise=True):
+        """ runs the target with current argument values """
+        if self.target is not None:
+            self.target(**self.keyword_arguments)
+        elif do_raise:
+            raise ValueError(f"cannot call missing target")
+
+    def prompt(self, name=None):
+        """ runs the target from a command prompt """
+        prompt = f"({name or self.name}) "
+        while True:
+            try:
+                print(prompt, end=' ')
+                self.parse(input(), run=True)
+            except KeyboardInterrupt:
+                sys.exit()
+            except Exception as e:
+                print('error:', str(e))
 
     def command(self, short=False, file=False, path=True, list=False):
         """ creates the command line that can be used to call the parser:
@@ -462,40 +503,6 @@ class CmdParser(object):
             if list:
                 cmd = str(quote_split(cmd))
             return cmd
-
-    def update(self, **kwargs):
-        self.keyword_arguments._update(**kwargs)
-
-    def cmd(self):
-        """ reads arguments from command line """
-        return self.__call__(cmd=None)
-
-    def gui(self):
-        """ opens the GUI """
-        return cmd_gui.ArgGui(parser=self).mainloop()
-
-    def parse(self, *cmds, run=False):
-        """ parses a command line from python (e.g. tests) """
-        return self.__call__(' '.join(cmds), run=run)
-
-    def run(self, do_raise=True):
-        """ runs the target with current argument values """
-        if self.target is not None:
-            self.target(**self.keyword_arguments)
-        elif do_raise:
-            raise ValueError(f"cannot call missing target")
-
-    def prompt(self, name=None):
-        """ runs the target from a command prompt """
-        prompt = (name or self.name) + '>'
-        while True:
-            try:
-                print(prompt, end=' ')
-                self.__call__(input())
-            except KeyboardInterrupt:
-                sys.exit()
-            except Exception as e:
-                print('error:', str(e))
 
     def save(self, filename: str, **kwargs):
         with open(filename, 'w') as f:

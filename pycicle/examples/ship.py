@@ -18,7 +18,7 @@ class Ship:
         else:
             self.x += dx
             self.y += dy
-            print(f"'{self.name}' moved to {self.x}, {self.y}")
+            print(f"'{self.name}' moved to ({self.x}, {self.y})")
 
     def sink(self, sunk):
         self.sunk = sunk
@@ -26,8 +26,8 @@ class Ship:
 
     def __str__(self):
         if self.sunk:
-            return f"'{self.name}'(sunk at {self.x}, {self.y})"
-        return f"'{self.name}'({self.x}, {self.y})"
+            return f"'{self.name}' sunk at ({self.x}, {self.y})"
+        return f"'{self.name}' at ({self.x}, {self.y})"
 
 
 class Move(CmdParser):
@@ -39,13 +39,8 @@ class Sink(CmdParser):
     sunk = Argument(bool, default=True)
 
 
-class Quit(CmdParser):
-    # no arguments: quit is quit :-)
-    def __init__(self):
-        super().__init__(self.quit)
-
-    def quit(self):
-        raise KeyboardInterrupt
+def stop():
+    raise KeyboardInterrupt
 
 
 class ShipCommand(CmdParser):
@@ -55,7 +50,7 @@ class ShipCommand(CmdParser):
         super().__init__(self.create,
                          move=Move(self.move),
                          sink=Sink(self.sink),
-                         quit=Quit())
+                         quit=CmdParser.from_callable(stop))
         self.ship = None
 
     def create(self, name):
