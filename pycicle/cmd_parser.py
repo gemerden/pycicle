@@ -9,7 +9,7 @@ from typing import Callable, Any, Mapping, Tuple, Sequence
 from pycicle import cmd_gui
 from pycicle.custom_types import get_type_string
 from pycicle.exceptions import ConfigError, ValidationError
-from pycicle.tools.utils import MISSING, DEFAULT, get_entry_file, get_typed_class_attrs, count
+from pycicle.tools.utils import MISSING, get_entry_file, get_typed_class_attrs, count
 from pycicle.tools.parsers import quote_split, quote_join, default_type_codecs
 
 
@@ -67,10 +67,10 @@ class Argument(object):
         try:
             return obj.__arg_values__[self.name]
         except KeyError:
-            if self.default is not MISSING:
-                obj.__arg_values__[self.name] = self.default
-                return self.default
-            raise AttributeError(f"'{self.cls.__name__}' has no attribute '{self.name}'")
+            if self.default is MISSING:
+                raise AttributeError(f"'{self.cls.__name__}' has no attribute value for '{self.name}'")
+            obj.__arg_values__[self.name] = self.default
+            return self.default
 
     def __set__(self, obj, value):
         """ see python descriptor documentation for the magic """
@@ -90,22 +90,21 @@ class Argument(object):
         Called in __init_subclass__ of owner class because self.name must be set to give clearer error messages and
         python __set_name__ changes all exceptions to (somewhat vague) RuntimeError.
         """
-        if not issubclass(self.type, self.types()):
-            raise TypeError(f"invalid type '{self.type.__name__}' in '{self.full_name}'")
-
         if self.name in self.reserved:
             raise ConfigError(f"Argument name '{self.name}' is reserved")
 
-        if self.name.startswith('_'):
-            raise ConfigError(f"Argument name '{self.name}' cannot start with an '_' (to prevent name conflicts)")
+        if not issubclass(self.type, self.types()):
+            raise TypeError(f"invalid type '{self.type.__name__}' in '{self.full_name}'")
 
+        if self.name.startswith('_'):
+            raise ConfigError(f"Argument name '{self.name}' cannot start with an '_' to prevent name conflicts")
+
+        self.flags = self._validate_flags(existing)
         self.default = self._validate_default(self.default)
 
         if count(existing.values(), key=lambda v: v.many) <= 1:
             if all(e.positional and not e.switch for e in existing.values()):
                 self.positional = True  # this means the argument CAN be positional
-
-        self.flags = self._validate_flags(existing)
 
     def encode(self, value):
         """ creates str version of value, takes 'many' into account """
@@ -119,7 +118,7 @@ class Argument(object):
         """ creates value from str, takes 'many' into account """
         if self.many:
             if isinstance(string_s, str):
-                string_s = string_s.split()
+                string_s = quote_split(string_s)
             if not len(string_s):
                 return self.default
             return [self._decode(s) for s in string_s]
@@ -128,17 +127,17 @@ class Argument(object):
                 return self.default
             return self._decode(string_s)
 
-    def parse_list(self, value):
+    def parse_list(self, values):
         """ only used in parser """
-        if value is DEFAULT:  # flag was not there
+        if values is MISSING:  # flag was not there
             if self.default is MISSING:
                 raise ValidationError(f"missing flag or value for '{self.name}'")
             return self.default
-        if not len(value):  # but flag was there
+        if not len(values):  # but flag was there
             if self.switch:
                 return True
             raise ValidationError(f"missing value for '{self.name}'")
-        return self.decode(value if self.many else value[0])
+        return self.decode(values if self.many else values[0])
 
     def _validate_flags(self, existing):
         def valid_format(flag):
@@ -405,7 +404,7 @@ class CmdParser(object):
             """ assigns positional string values to arguments """
             pos_arg_defs = []
             for name, arg_def in arg_defs.items():
-                if name in kwargs:
+                if name in kw_args:
                     break  # break on: first key already present
                 pos_arg_defs.append(arg_def)
 
@@ -416,15 +415,18 @@ class CmdParser(object):
                 while len(pos_args) and not pos_arg_defs[-1].many:  # from right
                     pos_kwargs[pos_arg_defs.pop(-1).name] = [pos_args.pop(-1)]
             except IndexError:
-                raise ValueError(f"too many positional arguments found: {cmd_list}")
+                raise ValidationError(f"too many positional arguments found: {cmd_list}")
 
-            if len(pos_args) and len(pos_arg_defs) == 1:  # remaining; only if many is True
-                pos_kwargs[pos_arg_defs[0].name] = pos_args
+            if len(pos_args):
+                if len(pos_arg_defs) == 1:  # remaining; only if many is True
+                    pos_kwargs[pos_arg_defs[0].name] = pos_args
+                else:  # either there are 0 or >1 arguments to assign the remaining values to
+                    raise ValidationError(f"some values cannot be assigned to arguments: {cmd_list}")
             return pos_kwargs
 
-        args, kwargs = get_args_kwargs(cmd_list)
-        kwargs.update(get_positional_kwargs(args))
-        self.update(**{n: a.parse_list(kwargs.get(n, DEFAULT)) for n, a in arg_defs.items()})
+        args, kw_args = get_args_kwargs(cmd_list)
+        kw_args.update(get_positional_kwargs(args))
+        self.update(**{n: a.parse_list(kw_args.get(n, MISSING)) for n, a in arg_defs.items()})
 
     @property
     def name(self):
