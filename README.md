@@ -94,25 +94,7 @@ PyCicle provides the following features:
 - Some extras are also available, like:
 
   - Running the command line as an interactive prompt, for example using subcommands to call different functions in a single python session,
-
-  - Creating a command line parser from an annotated function definition, with somwhat limited configuration options (e.g. no custom validators):
-
-    ```python
-    # talk.py
-    from pycicle import CmdParser
-    
-    def talk(name: str, messages: list[str] = ('Hello',)):
-        for message in messages:
-            print(f"{name} says '{message}'")
-    
-    CmdParser.from_callable(talk).cmd()        
-    ```
-
-    with `> python talk.py --gui` shows:
-
-    ![](pycicle/images/talk.PNG)
-
-​				or it could be called with e.g. `> python talk.py Bob -m Hello Goodbye`. 
+- Creating a command line parser directly from an annotated function definition, e.g. `CmdParser.from_callable(func)` (see "Configuration/Creating a Parser from a Function").
 
 ## Instruction
 
@@ -127,17 +109,20 @@ In general the following steps can be followed to create a command line interfac
        print(f"{name} says: {start}{start.join(texts)}")
    ```
 
-	2. Create the associated command parser class:
+2. Create the associated command parser class:
 
     ```python
     from pycicle import CmdParser, Argument
     
     class Sayer(CmdParser):
-        name = Argument(str, default='Bob')
-        texts = Argument(str, many=True, default=['nothing'])
+        """
+        This is the command line parser for the function 'say_it()'
+        """
+        name = Argument(str, default='Bob', help='this is the person saying something')
+        texts = Argument(str, many=True, default=['nothing'], help='this is what is said')
     ```
 
-	3. Create an instance of the parser and assign the target function to it:
+3. Create an instance of the parser and assign the target function to it:
 
     ```python
     sayer = Sayer(say_it)
@@ -162,7 +147,7 @@ In general the following steps can be followed to create a command line interfac
            sayer.parse("--name Ann --texts Hello Goodbye", run=True)  # etcetera 
    ```
 
-   Note that this is only testing the parser, not the target function `say_it()`. This is usually wise to do first.
+   Note that this is only testing the parser, not the target function `say_it()`. 
 
 5. Use the parser; there are a few ways you can put it to work:
 
@@ -197,9 +182,9 @@ In general the following steps can be followed to create a command line interfac
          Sayer(say_it).gui()
      ```
 
-     or from the command line: run as normal and one the command line type: `> python sayit.py --gui`.
+     or from the command line: run with `.cmd()` and on the command line type: `> python sayit.py --gui`.
 
-6. An example of using sub-parsers can be found below in "Configuring Subparsers". An example of auto-generation of a parser from a function can be found above in "Features".
+6. An example of using sub-parsers can be found below in "Configuration/Configuring Subparsers". An example of auto-generation of a parser from a function can be found above in "Configuration/Creating a Parser from a Function".
 
 ## Using the GUI
 
@@ -304,6 +289,48 @@ The are a couple of ways to run the parser (using `parser = Parser(some_target)`
 - To run the GUI from the command line, run `parser.cmd()` and argument `--gui`,  e.g.: `> python start_server.py --gui`,
 - `parser.prompt()` will start prompt and an evaluation loop taking arguments from the command line, parsing them and executing a target function. This can be useful in combination with subparsers. 
 
+#### Types and Codecs
+
+Since the command line only takes as argument values, the parser must be able to decode/parse the values to their actual type (the `type` parameter in Argument). To be able to run the GUI and generate different options for the command line these values must be encoded back to strings. 
+
+This is supported out-of-the-box by PyCicle for a number of types:
+
+- `str`, `int`, `float` or `bool` and their subclasses,
+- `date`, `time`, `datetime`, `timedelta` from the standard python `datetime` module,
+- `Choice`, `File` and `Folder`, implemented as subclasses of basic types in `custom_types.py`*.
+
+Additionally types can be added to work with PyCicle in 2 ways:
+
+1. Adding a type with encode and decode function to (your subclass of) `CmdParser`: for this the `@classmethod` `set_codec()` can be used as in:
+
+   ```python
+   CmdParser.set_codec(mytype, encode=myencoder, decode=mydecoder)
+   ```
+
+   with:
+
+   - `mytype` the type you want to support, used when you define an argument (`some_name = Argument(mytype)`),
+   - `myencoder` a function that take a value of `mytype` and returns a string (`str`),
+   - `mydecoder` a function that takes a string and return a value of `mytype`,
+   - Note: `mytype` must support `isinstance(some_value, mytype)`.
+
+2. Creating you own type. These types do not have to be added to the parser. It must have:
+
+   - an `__init__` method that supports a single string argument,
+   - a `__str__` method that return the string representation of a value of your type, that can be used by `__init__` as argument to recreate the value, similar to how `int("3") == 3` and `str(3) == "3"`,
+
+Note that instead of adding or creating your own types, your target function could do some conversions as well.
+
+#### *Choice, File and Folder
+
+As mentioned above there are a couple of custom types (factories) already defined to be used in the parser:
+
+- `Choice(*choices)`: this type is comparable to an Enum. It can be configured with `float`, `int` and `str` values, but not mixed types. For example `Argument(Choice('green', 'red', 'blue'), default='green')` or `Choice(1, 2, 3)`,
+- `Folder(existing=None)`: represents a folder in the file system. It is a subclass of `str`. `existing=True` means the folder must exist, `False`: the folder must not exist  and `None` (default): don't care. Example: `Folder(existing=True)`,
+- `File(*extensions, existing=None)`: represents a file in the file system. With `existing` as in `Folder` and `*extensions` the extensions, that are allowed to be configured (no extensions means all extensions). Example: `File('.log', existing=False)`. 
+
+Note that `Choice`, `Folder` and `File`are actually class factory functions; they are handled somewhat differently than user-created types (mainly because they are configurable, and have custom widgets in the GUI). The base classes are `ChoiceBase`, `FolderBase` and `FileBase` respectively (in case you want use `isinstance`/`issubclass`).
+
 #### Configuring Subparsers
 
 Subparsers are parsers that can be called with an extra first argument on the command line. Both a main parser and subparsers can be used. An example:
@@ -405,6 +432,34 @@ When a sub-parser is configured, the GUI will give the option to select the sub-
 
 
 
+#### Creating a Parser from a Function
+
+It is possible to create a command line parser directly from a function. This option has some limitations, since not all argument parameters, like a custom validator, can be derived from the function signature. However for a quick command line definition, this can be useful.
+
+Example, from the function `talk()` below, the command line parser can be created with `CmdParser.from_callable(talk)` and be invoked with either `.cmd()`, `.gui()` or `.parse(cmd, run=False)` as always:
+
+```python
+# talk.py
+from pycicle import CmdParser
+
+def talk(name: str, messages: list[str] = ['Hello']):
+    for message in messages:
+        print(f"{name} says '{message}'")
+
+CmdParser.from_callable(talk).cmd()        
+```
+
+with `> python talk.py --gui` shows:
+
+![](pycicle/images/talk.PNG)
+
+or it could be called with e.g. `> python talk.py Bob -m Hello Goodbye`. 
+
+Limitations are:
+
+- The type annotation must either be a basic type (`str`, `int`, `float` or `bool`) or a subclass thereof (like `Choice`, `File` or `Folder`) or be a `List` (from the standard module `typing`) of these types (like `List[int]`), alternatively you can add or define you own types (see above), but that reduces the ease-of-use factor somewhat,
+- Only `type`, `many` and `default` can be derived for Argument definition (not `flags`, `valid` and `help`); `many` is set to True if the type annotation is a `List[]` with some element type.
+
 ## Parser Logic
 
 Given a parser configuration, some rules are applied to the actual command line:
@@ -419,4 +474,4 @@ Given a parser configuration, some rules are applied to the actual command line:
 
 ## Contributions
 
-Any contributions, comments, issues, pull requests etc. are very welcome!
+Any contributions, comments, issues, pull requests etc., also about the readme, are very welcome!
