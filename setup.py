@@ -10,7 +10,7 @@ setup(
     url='https://github.com/gemerden/pycicle',
     license='MIT License',
     packages=['pycicle', 'pycicle.tools'],
-    install_requires=[],
+    install_requires=['tkinter'],
     classifiers=[
         # How mature is this project? Common values are
         #   3 - Alpha
