@@ -643,7 +643,8 @@ class ChildParserFrame(BaseParserFrame):
         if filename:
             self.filename = filename
             try:
-                self.parser = self.parser.load(self.filename)
+                self.parser = self.parser.load(self.filename,
+                                               target=self.parser.target)
             except Exception as e:
                 tk.messagebox.showerror("error while loading command line file",
                                         f"message: {str(e)}\n\nprobable cause:\n"
