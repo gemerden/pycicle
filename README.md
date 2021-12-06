@@ -5,7 +5,7 @@
 
 This module has 2 main goals:
 
-1. Make the configuration of command line options for your program easy*,
+1. Make the configuration of a command line interface for your program easy*,
 2. Allow users of your script to configure it from a GUI instead of the command line.
 
 *compared to using `argparse` or `optparse` from the python standard library.
@@ -105,8 +105,8 @@ In general the following steps can be followed to create a command line interfac
    ```python
    # sayit.py
    def say_it(name, texts):
-       start = '\n\t'  # cannot use '\' in f-strings
-       print(f"{name} says: {start}{start.join(texts)}")
+       sep = '\n\t'  # no '\' in f-strings
+       print(f"{name} says: {sep}{sep.join(texts)}")
    ```
 
 2. Create the associated command parser class:
