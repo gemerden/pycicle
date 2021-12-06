@@ -25,4 +25,4 @@ if __name__ == '__main__':
         print(f"printer: {kwargs}")
 
 
-    Parser.gui(target=printer)
+    Parser(printer).gui()
