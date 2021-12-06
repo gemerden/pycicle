@@ -358,6 +358,8 @@ class CmdParser(object):
         return type(get_class_name(func), (CmdParser,), arguments)(func)  # create class and initialize with func as target
 
     def __init__(self, __target: Callable = None, **sub_parsers: 'CmdParser'):
+        if __target and not callable(__target):
+            raise TypeError(f"first argument of '{self.__class__.__name__}()' must be callable")
         self.target = __target  # double underscore to avoid name clashes with **sub_parsers
         self.parent = None
         self.sub_parsers = self._link_sub_parsers(sub_parsers)
