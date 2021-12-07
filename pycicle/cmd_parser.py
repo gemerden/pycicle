@@ -1,9 +1,8 @@
 import os
 import sys
 
-from dataclasses import dataclass
 from inspect import Parameter, signature
-from typing import Callable, Any, Mapping, Tuple, Sequence
+from typing import Callable, Any, Mapping, Tuple
 
 from pycicle import cmd_gui
 from pycicle.custom_types import get_type_string
@@ -12,16 +11,7 @@ from pycicle.tools.utils import MISSING, get_entry_file, get_typed_class_attrs, 
 from pycicle.tools.parsers import quote_split, quote_join, default_type_codecs
 
 
-@dataclass
 class Argument(object):
-    type: Callable
-    flags: Tuple[str, ...] = None
-    many: bool = False
-    default: Any = MISSING
-    valid: Callable[[Any], bool] = None
-    help: str = ""
-    name: str = ""  # set in __set_name__
-
     type_codecs = default_type_codecs.copy()
     basic_types = (str, int, float, bool)
 
@@ -35,11 +25,15 @@ class Argument(object):
     def set_codec(cls, type, encode, decode):
         cls.type_codecs[type] = (encode, decode)
 
-    def __post_init__(self):
-        """ mainly sets the encoders and decoders for the argument """
-        encode, decode = self.type_codecs.get(self.type, (None, None))
-        self._encode = encode or str  # str is default
-        self._decode = decode or self.type  # self.type is default (int('3') == 3)
+    def __init__(self, type, flags=None, many=False, default=MISSING, valid=None, help=''):
+        self.type = type
+        self.flags = flags
+        self.many = many
+        self.default = default
+        self.valid = valid
+        self.help = help
+        self.name = None  # set in __set_name__
+        self._encode, self._decode = self.type_codecs.get(self.type, (str, self.type))
         self.positional = False  # set by validate_config(); meaning argument CAN be positional
 
     @property
@@ -89,11 +83,11 @@ class Argument(object):
         Called in __init_subclass__ of owner class because self.name must be set to give clearer error messages and
         python __set_name__ changes all exceptions to (somewhat vague) RuntimeError.
         """
-        if self.name in self.reserved:
-            raise ConfigError(f"Argument name '{self.name}' is reserved")
-
         if not issubclass(self.type, self.types()):
             raise TypeError(f"invalid type '{self.type.__name__}' in '{self.full_name}'")
+
+        if self.name in self.reserved:
+            raise ConfigError(f"Argument name '{self.name}' is reserved")
 
         if self.name.startswith('_'):
             raise ConfigError(f"Argument name '{self.name}' cannot start with an '_' to prevent name conflicts")
