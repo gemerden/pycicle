@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='pycicle',
-    version='0.1.4',
+    version='0.1.5',
     description='command line parsers for the 21st century',
     long_description='see <https://github.com/gemerden/pycicle>',  # after long battle to get markdown to work on PyPI
     author='Lars van Gemerden',
