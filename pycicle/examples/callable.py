@@ -1,6 +1,8 @@
+from typing import List
+
 from pycicle import CmdParser
 
-def talk(name: str, messages: list[str] = ('Hello',)):
+def talk(name: str, messages: List[str] = ('Hello',)):
     for m in messages:
         print(f"{name} says '{m}'")
 
