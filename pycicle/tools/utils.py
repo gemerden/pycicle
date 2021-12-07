@@ -50,6 +50,21 @@ def get_typed_class_attrs(cls, base):
     return class_attrs
 
 
+class cached_property(object):
+    """A read-only property that is only evaluated once."""
+
+    def __init__(self, getter):
+        self.getter = getter
+
+    def __get__(self, obj, cls):
+        if obj is None:
+            return self
+        result = obj.__dict__[self.getter.__name__] = self.getter(obj)
+        return result
+
+
+
+
 def count(seq, key):
     counter = 0
     for s in seq:

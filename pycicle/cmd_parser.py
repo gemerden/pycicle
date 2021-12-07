@@ -2,14 +2,13 @@ import os
 import sys
 
 from dataclasses import dataclass
-from functools import cached_property
 from inspect import Parameter, signature
 from typing import Callable, Any, Mapping, Tuple, Sequence
 
 from pycicle import cmd_gui
 from pycicle.custom_types import get_type_string
 from pycicle.exceptions import ConfigError, ValidationError
-from pycicle.tools.utils import MISSING, get_entry_file, get_typed_class_attrs, count
+from pycicle.tools.utils import MISSING, get_entry_file, get_typed_class_attrs, count, cached_property
 from pycicle.tools.parsers import quote_split, quote_join, default_type_codecs
 
 
