@@ -299,27 +299,20 @@ This is supported out-of-the-box by PyCicle for a number of types:
 - `date`, `time`, `datetime`, `timedelta` from the standard python `datetime` module,
 - `Choice`, `File` and `Folder`, implemented as subclasses of basic types in `custom_types.py`*.
 
-Additionally types can be added to work with PyCicle in 2 ways:
+Other types can be added to work with PyCicle by registering an encode and decode function in (your subclass of) `CmdParser`: for this use the class method `set_codec()`:
 
-1. Adding a type with encode and decode function to (your subclass of) `CmdParser`: for this the `@classmethod` `set_codec()` can be used as in:
+```python
+CmdParser.set_codec(mytype, encode=myencoder, decode=mydecoder)
+```
 
-   ```python
-   CmdParser.set_codec(mytype, encode=myencoder, decode=mydecoder)
-   ```
+with:
 
-   with:
+- `mytype` the type you want to support, used when you define an argument (`some_name = Argument(mytype)`),
+- `myencoder` a function that take a value of `mytype` and returns a string (`str`),
+- `mydecoder` a function that takes a string and returns a value of `mytype`,
+- Note: `mytype` must support `isinstance(some_value, mytype)`.
 
-   - `mytype` the type you want to support, used when you define an argument (`some_name = Argument(mytype)`),
-   - `myencoder` a function that take a value of `mytype` and returns a string (`str`),
-   - `mydecoder` a function that takes a string and return a value of `mytype`,
-   - Note: `mytype` must support `isinstance(some_value, mytype)`.
-
-2. Creating you own type. These types do not have to be added to the parser. It must have:
-
-   - an `__init__` method that supports a single string argument,
-   - a `__str__` method that return the string representation of a value of your type, that can be used by `__init__` as argument to recreate the value, similar to how `int("3") == 3` and `str(3) == "3"`,
-
-Note that instead of adding or creating your own types, your target function could do some conversions as well.
+Also note that instead of adding your own types, your target function could do some conversions as well.
 
 #### *Choice, File and Folder
 
