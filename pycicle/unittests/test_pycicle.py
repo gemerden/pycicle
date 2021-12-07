@@ -325,7 +325,7 @@ class TestArgParser(unittest.TestCase):
     def test_from_callable(self):
         output = []
 
-        def func(name: str, messages: list[str] = ['Hello']):
+        def func(name: str, messages: List[str] = ['Hello']):
             for message in messages:
                 output.append((name, message))
 
