@@ -216,7 +216,7 @@ class TestArgParser(unittest.TestCase):
                 one = Argument(int, flags=('-x', '--xxx'))
                 two = Argument(int, flags=('-x',))  # double removed, no flags left
 
-    unittest.skipIf(os.getenv('GITHUB_ACTIONS'), 'relative paths do not work on github actions')
+    @unittest.skipIf(os.getenv('GITHUB_ACTIONS'), 'relative paths do not work on github actions')
     def test_files(self):
         class Parser(CmdParser):
             one = Argument(File('.txt', existing=False))
@@ -227,7 +227,7 @@ class TestArgParser(unittest.TestCase):
                        two=(__file__, '..\\unittests\\test_pycicle.py'),
                        three=(['c:\\does_not_exist.txt', '..\\unittests\\does_not_exist.txt'],))
 
-    unittest.skipIf(os.getenv('GITHUB_ACTIONS'), 'relative paths do not work on github actions')
+    @unittest.skipIf(os.getenv('GITHUB_ACTIONS'), 'relative paths do not work on github actions')
     def test_folders(self):
         class Parser(CmdParser):
             one = Argument(Folder(existing=False))
