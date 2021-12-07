@@ -1,6 +1,3 @@
-import sys
-
-sys.path.append('D:/documents/_Code_/_repos_/pycicle')
 from pycicle import CmdParser, Argument
 
 
