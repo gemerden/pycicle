@@ -2,14 +2,14 @@ from setuptools import setup
 
 setup(
     name='pycicle',
-    version='0.1.2',
+    version='0.1.3',
     description='command line parsers for the 21st century',
     long_description='see <https://github.com/gemerden/pycicle>',  # after long battle to get markdown to work on PyPI
     author='Lars van Gemerden',
     author_email='gemerden@gmail.com',
     url='https://github.com/gemerden/pycicle',
     license='MIT License',
-    packages=['pycicle', 'pycicle.tools'],
+    packages=['pycicle', 'pycicle.tools', 'pycicle.images', 'pycicle.examples', 'pycicle.unittests'],
     install_requires=[],
     classifiers=[
         # How mature is this project? Common values are
