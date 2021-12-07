@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='pycicle',
-    version='0.1.0',
+    version='0.1.2',
     description='command line parsers for the 21st century',
     long_description='see <https://github.com/gemerden/pycicle>',  # after long battle to get markdown to work on PyPI
     author='Lars van Gemerden',
@@ -10,7 +10,7 @@ setup(
     url='https://github.com/gemerden/pycicle',
     license='MIT License',
     packages=['pycicle', 'pycicle.tools'],
-    install_requires=['tkinter'],
+    install_requires=[],
     classifiers=[
         # How mature is this project? Common values are
         #   3 - Alpha
